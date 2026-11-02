@@ -640,14 +640,43 @@ function openInfo(k){
 /* ---------- admin ---------- */
 var admOpen=false,admTab='produtos',admAuth=false,editing=null;
 function hash(s){var h1=0xdeadbeef,h2=0x41c6ce57;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)}
-function getHash(){try{return localStorage.getItem(AKEY)||''}catch(e){return ''}}
-function openAdmin(){admOpen=true;renderAdm();show('#ovAdm',true);$('#ovAdm').scrollTop=0}
+var ADMIN_SESSION_KEY='ist.supabase.admin.session.v1';
+var SUPABASE_URL='https://bqueamblmrvudaescrtb.supabase.co';
+var SUPABASE_PUBLISHABLE_KEY='sb_publishable_iwlDpxRyQDMzt_phvzVk7Q_sKWRpt2V';
+function getAdminSession(){try{return JSON.parse(sessionStorage.getItem(ADMIN_SESSION_KEY)||'null')}catch(e){return null}}
+function setAdminSession(value){try{sessionStorage.setItem(ADMIN_SESSION_KEY,JSON.stringify(value))}catch(e){}}
+function clearAdminSession(){try{sessionStorage.removeItem(ADMIN_SESSION_KEY)}catch(e){}}
+async function verifyAdminSession(session){
+  if(!session||!session.access_token)return false;
+  try{
+    var response=await fetch(API_BASE+'/api/admin/me',{headers:{'Authorization':'Bearer '+session.access_token,'Accept':'application/json'}});
+    return response.ok;
+  }catch(e){return false}
+}
+async function signInAdmin(email,password){
+  var response=await fetch(SUPABASE_URL+'/auth/v1/token?grant_type=password',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SUPABASE_PUBLISHABLE_KEY},
+    body:JSON.stringify({email:email,password:password})
+  });
+  var data=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(data.msg||data.message||data.error_description||'Não foi possível autenticar. Confira e-mail e senha.');
+  if(!data.access_token)throw new Error('O Supabase não retornou uma sessão válida.');
+  var session={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:Date.now()+(Number(data.expires_in||3600)*1000),user:data.user};
+  if(!(await verifyAdminSession(session)))throw new Error('Login válido, mas este usuário não está autorizado como administrador em admin_users.');
+  setAdminSession(session);
+  return session;
+}
+function signOutAdmin(){clearAdminSession();admAuth=false;renderAdm()}
+function openAdmin(){admOpen=true;admAuth=false;renderAdm();show('#ovAdm',true);$('#ovAdm').scrollTop=0;
+  var session=getAdminSession();
+  if(session)verifyAdminSession(session).then(function(ok){if(ok){admAuth=true;renderAdm()}else{clearAdminSession();renderAdm()}});
+}
 function closeAdmin(){admOpen=false;admAuth=false;editing=null;show('#ovAdm',false);if(location.hash==='#admin')history.replaceState(null,'',location.pathname+location.search)}
 function renderAdm(){
   var P=$('#admPanel');
   if(!admAuth){
-    var has=!!getHash();
-    P.innerHTML='<button class="x" data-admclose aria-label="Fechar">✕</button><div style="padding:2.4rem 1.6rem;max-width:420px;margin:0 auto"><h3 style="font-size:1.5rem;margin-bottom:.6rem">Painel da loja</h3><p class="note" style="margin-bottom:1rem">'+(has?'Digite a senha de administrador.':'Defina uma senha de administrador para proteger o painel.')+'</p><form id="loginForm">'+fld('a_pass',has?'Senha':'Nova senha','','type="password" autocomplete="'+(has?'current-password':'new-password')+'"')+'<div class="err" id="aerr"></div><button class="btn block" type="submit">'+(has?'Entrar':'Criar senha e entrar')+'</button></form></div>';
+    P.innerHTML='<button class="x" data-admclose aria-label="Fechar">✕</button><div style="padding:2.4rem 1.6rem;max-width:420px;margin:0 auto"><h3 style="font-size:1.5rem;margin-bottom:.6rem">Acesso administrativo</h3><p class="note" style="margin-bottom:1rem">Entre com sua conta autorizada no Supabase.</p><form id="loginForm">'+fld('a_email','E-mail','ghinestroza813@gmail.com','type="email" autocomplete="username" required')+fld('a_pass','Senha do Supabase','','type="password" autocomplete="current-password" required')+'<div class="err" id="aerr"></div><button class="btn block" type="submit">Entrar com segurança</button></form></div>';
     return;
   }
   var tabs=[['produtos','Produtos'],['depoimentos','Depoimentos'],['pedidos','Pedidos'],['config','Configurações']];
@@ -656,7 +685,7 @@ function renderAdm(){
   if(admTab==='depoimentos')body='<h3>Depoimentos</h3><p class="note" style="margin-bottom:1rem">A seção só aparece no site quando houver ao menos um depoimento cadastrado.</p><form id="tmForm">'+fld('t_name','Nome do atleta','')+fld('t_role','Detalhe (opcional, ex.: cidade ou categoria)','')+'<div class="fld"><label for="t_text">Depoimento</label><textarea id="t_text" rows="3"></textarea></div><button class="btn sm" type="submit">Adicionar depoimento</button></form><div style="margin-top:1.4rem">'+(S.testimonials.map(function(t,i){return '<div class="arow"><div><b>'+esc(t.name)+'</b><small>'+esc(t.text)+'</small></div><button class="btn ghost sm" data-deltm="'+i+'">Remover</button></div>'}).join('')||'<div class="empty">Nenhum depoimento cadastrado.</div>')+'</div>';
   if(admTab==='pedidos'){var os=(S.cloudOrders&&canW)?S.cloudOrders:S.orders;body='<h3>Pedidos recebidos ('+os.length+')</h3><p class="note" style="margin-bottom:1rem">'+(canW?'Pedidos feitos por clientes com acesso à conta, mais os deste navegador.':'Mostrando os pedidos feitos neste navegador. Todo pedido também chega ao WhatsApp da loja.')+'</p>'+(os.map(function(o){return '<details><summary style="font-size:1rem"><span>'+esc(o.number)+' · '+esc(o.contact.name)+' · '+brl(o.total)+'</span></summary><p style="white-space:pre-line;font-size:.9rem">'+esc(orderText(o))+'\n\nData: '+new Date(o.createdAt).toLocaleString('pt-BR')+'</p></details>'}).join('')||'<div class="empty">Nenhum pedido ainda.</div>')}
   if(admTab==='config'){var s=S.settings,pg=s.pages||{};body='<h3>Configurações</h3><form id="cfgForm"><div class="row2">'+fld('s_wa','WhatsApp da loja (com DDI)',s.whatsapp)+fld('s_email','E-mail da loja (opcional)',s.email)+'</div><div class="row2">'+fld('s_tax','Alíquota estimada de impostos (%)',s.taxRate,'inputmode="decimal"')+fld('s_cnpj','CNPJ',s.cnpj)+'</div><div class="row2">'+fld('s_eco','Frete econômico (R$)',s.shipEco,'inputmode="decimal"')+fld('s_exp','Frete expresso (R$)',s.shipExp,'inputmode="decimal"')+'</div>'+fld('s_ig','Link do Instagram (aparece no rodapé quando preenchido)',s.instagram)+'<div class="fld"><label>Foto do hero (opcional)</label><input type="file" id="s_hero" accept="image/*"></div>'+(s.heroImg?'<div class="photos"><div><img alt="" src="'+esc(s.heroImg)+'"><button type="button" data-rmhero>×</button></div></div>':'')+'<h4 style="margin:1rem 0 .6rem">Bloco “Por que comprar conosco?”</h4>'+fld('s_wl','Título do bloco destacado',s.whyLead)+'<div class="fld"><label for="s_wt">Texto do bloco destacado</label><textarea id="s_wt" rows="3">'+esc(s.whyText)+'</textarea></div>'+s.why.map(function(c,i){return '<div class="row2">'+fld('s_wc'+i+'t','Card '+(i+1)+' · título',c.t)+fld('s_wc'+i+'d','Card '+(i+1)+' · texto',c.d)+'</div>'}).join('')+'<h4 style="margin:1rem 0 .6rem">Páginas institucionais</h4>'+[['sobre','Sobre nós'],['importacao','Importação direta'],['envio','Política de envio'],['trocas','Trocas e devoluções']].map(function(a){return '<div class="fld"><label for="s_pg_'+a[0]+'">'+a[1]+'</label><textarea id="s_pg_'+a[0]+'" rows="2">'+esc(pg[a[0]]||'')+'</textarea></div>'}).join('')+'<button class="btn" type="submit">Salvar configurações</button></form><h4 style="margin:2rem 0 .6rem">Trocar senha</h4><form id="pwForm" style="max-width:340px">'+fld('s_pw','Nova senha','','type="password" autocomplete="new-password"')+'<button class="btn ghost sm" type="submit">Atualizar senha</button></form>'}
-  P.innerHTML='<div class="dh"><h3>Painel da loja</h3><button class="x" data-admclose aria-label="Fechar">✕</button></div><div class="adm"><nav>'+tabs.map(function(t){return '<button data-tab="'+t[0]+'" class="'+(admTab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'</nav><main>'+body+'</main></div>';
+  P.innerHTML='<div class="dh"><h3>Painel da loja</h3><div style="display:flex;gap:.5rem"><button class="btn ghost sm" type="button" data-adminlogout>Sair</button><button class="x" data-admclose aria-label="Fechar">✕</button></div></div><div class="adm"><nav>'+tabs.map(function(t){return '<button data-tab="'+t[0]+'" class="'+(admTab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('')+'</nav><main>'+body+'</main></div>';
 }
 var draftImgs=[];
 function prodForm(){
@@ -676,6 +705,7 @@ function numLoose(v){v=String(v).trim();if(!v)return null;var n=parseFloat(v.ind
 /* ---------- events ---------- */
 document.addEventListener('click',function(e){
   var t=e.target,el;
+  if((el=t.closest('[data-adminlogout]'))){signOutAdmin();return}
   if((el=t.closest('[data-open]'))){openProduct(el.getAttribute('data-open'));if(el.hasAttribute('data-closesearch'))$('#sb').classList.remove('on');return}
   if((el=t.closest('[data-add]'))){
     var id=el.getAttribute('data-add'),p=find(id);
@@ -719,9 +749,13 @@ document.addEventListener('submit',async function(e){
   var f=e.target.id;if(!f)return;e.preventDefault();
   if(f==='coForm'){grab();var er=validate();CO.err=er;if(er){$('#coerr').textContent=er;return}
     if(CO.step<4){CO.step++;renderCo();$('#ovCo').scrollTop=0}else{var b=e.target.querySelector('button[type=submit]');b.disabled=true;await placeOrder()}return}
-  if(f==='loginForm'){var v=$('#a_pass').value,h=getHash();
-    if(!h){if(v.length<6){$('#aerr').textContent='Use ao menos 6 caracteres.';return}try{localStorage.setItem(AKEY,hash(v))}catch(x){}if(cdb&&canW){try{await cdb.doc('private/admin').set({hash:hash(v)})}catch(x){}}admAuth=true;renderAdm()}
-    else if(hash(v)===h){admAuth=true;renderAdm()}else $('#aerr').textContent='Senha incorreta.';return}
+  if(f==='loginForm'){
+    var email=$('#a_email').value.trim(),password=$('#a_pass').value;
+    var button=e.target.querySelector('button[type=submit]');button.disabled=true;button.textContent='Validando...';
+    try{await signInAdmin(email,password);admAuth=true;renderAdm()}
+    catch(error){$('#aerr').textContent=error.message||'Falha no login.';button.disabled=false;button.textContent='Entrar com segurança'}
+    return;
+  }
   if(f==='pForm'){
     keepDraft();var p=editing;
     var price=numLoose(p.price);if(!p.name.trim()||!p.brand.trim()||price==null){toast('Preencha nome, marca e preço.');return}
