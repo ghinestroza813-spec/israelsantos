@@ -91,7 +91,11 @@ const productInput = z.object({
   images: z.array(z.string().url()).max(20).optional().default([]),
   sizes: z.array(z.string().max(40)).max(30).optional().default([]),
   is_active: z.boolean().optional().default(true),
-  is_featured: z.boolean().optional().default(false)
+  is_featured: z.boolean().optional().default(false),
+  badge: z.string().max(100).optional().nullable(),
+  stock: z.number().int().nonnegative().optional().nullable(),
+  installments: z.number().int().min(1).max(24).optional().nullable(),
+  sort_order: z.number().int().optional().default(0)
 });
 
 app.get("/health", (_req, res) => {
@@ -121,9 +125,9 @@ app.get("/api/products", requireSupabase, async (req, res) => {
     const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 24;
     const { data, error } = await supabase
       .from("products")
-      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_featured")
+      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_featured, badge, stock, installments, sort_order, needs_review")
       .eq("is_active", true)
-      .order("created_at", { ascending: false })
+      .order("sort_order", { ascending: true })
       .limit(limit);
     if (error) throw error;
     return res.json({ products: data || [] });
