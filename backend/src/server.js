@@ -125,9 +125,9 @@ app.get("/api/products", requireSupabase, async (req, res) => {
     const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 24;
     const { data, error } = await supabase
       .from("products")
-      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_featured, badge, stock, installments, sort_order, needs_review")
+      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_featured, created_at")
       .eq("is_active", true)
-      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(limit);
     if (error) throw error;
     return res.json({ products: data || [] });
