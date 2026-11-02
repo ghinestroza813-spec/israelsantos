@@ -13,7 +13,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
   .filter(Boolean);
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SECRET_KEY;
 const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceKey);
 const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseServiceKey, {
@@ -54,7 +54,7 @@ app.get("/health/database", async (_req, res) => {
   if (!supabase) {
     return res.status(503).json({
       status: "not_configured",
-      message: "Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server."
+      message: "Configure SUPABASE_URL and SUPABASE_SECRET_KEY on the server."
     });
   }
 
