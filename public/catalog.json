@@ -1,0 +1,13 @@
+{
+  "settings": { "shipEco": 85, "shipExp": 260, "taxRate": 60 },
+  "products": [
+    { "id": "luva-fairtex-breathable", "name": "Luva Fairtex Breathable Couro Legítimo", "price": 689.9 },
+    { "id": "luva-infightstyle-gold", "name": "Luva Infightstyle Gold Edition Couro", "price": 749.9 },
+    { "id": "short-twins-special", "name": "Short Twins Special Cetim Premium", "price": 329.9 },
+    { "id": "short-lumpinee-preto", "name": "Shorts Lumpinee Classic Preto", "price": 250 },
+    { "id": "short-lumpinee-azul", "name": "Shorts Lumpinee Classic Azul", "price": 250 },
+    { "id": "short-lumpinee-verde", "name": "Shorts Lumpinee Classic Verde", "price": 250 },
+    { "id": "caneleira-topking-couro", "name": "Caneleira Top King Couro Profissional", "price": 459.9 },
+    { "id": "protetor-bucal-fairtex", "name": "Protetor Bucal Duplo Fairtex", "price": 89.9 }
+  ]
+}

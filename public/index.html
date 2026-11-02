@@ -1,7 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Israel Santos Thaishop | Equipamentos de Elite para Muay Thai</title>
 <meta name="description" content="Loja de equipamentos importados de Muay Thai: luvas, shorts, caneleiras e acessórios originais da Fairtex, Twins, Top King, Lumpinee e Infightstyle. Envio para todo o Brasil.">
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;600;700&display=swap">
@@ -269,6 +272,9 @@ footer{border-top:1px solid var(--line);background:var(--bg2);padding-block:56px
 @media (prefers-reduced-motion:reduce){.mq-track{animation:none}.rv{transition:none}html{scroll-behavior:auto}}
 </style>
 
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
+</head>
+<body>
 <header class="top" id="top">
   <div class="mq" aria-hidden="true"><div class="mq-track" id="mq"></div></div>
   <div class="w">
@@ -554,7 +560,7 @@ function renderCart(){
 }
 
 /* ---------- checkout ---------- */
-var CO={step:1,data:{email:'',name:'',phone:'',cep:'',street:'',num:'',comp:'',bairro:'',city:'',uf:'',ship:'eco',pay:'pix'},err:''};
+var CO={step:1,data:{email:'',name:'',phone:'',cep:'',street:'',num:'',comp:'',bairro:'',city:'',uf:'',ship:'eco',pay:'mp'},err:''};
 function shipOpt(k){var s=S.settings;return k==='exp'?{key:'exp',label:'Expresso internacional',carrier:'DHL/FedEx',days:'7 a 12 dias',price:Number(s.shipExp)}:{key:'eco',label:'Econômico internacional',carrier:'Tailândia Post/Correios',days:'15 a 30 dias',price:Number(s.shipEco)}}
 function openCheckout(){CO.step=1;CO.err='';show('#ovCart',false);renderCo();show('#ovCo',true);$('#ovCo').scrollTop=0}
 function summaryHTML(){
@@ -568,8 +574,8 @@ function renderCo(){
   if(CO.step===1)sp=fld('c_email','E-mail',d.email,'type="email" autocomplete="email"')+fld('c_name','Nome completo',d.name,'autocomplete="name"')+fld('c_phone','Telefone / WhatsApp',d.phone,'type="tel" autocomplete="tel"');
   if(CO.step===2)sp='<div class="row2">'+fld('c_cep','CEP',d.cep,'inputmode="numeric" maxlength="9" autocomplete="postal-code"')+'<div></div></div>'+fld('c_street','Rua',d.street)+'<div class="row2">'+fld('c_num','Número',d.num)+fld('c_comp','Complemento',d.comp)+'</div>'+fld('c_bairro','Bairro',d.bairro)+'<div class="row3">'+fld('c_city','Cidade',d.city)+fld('c_uf','UF',d.uf,'maxlength="2" style="text-transform:uppercase"')+'</div><div class="note" id="cepmsg">Digite o CEP para buscar o endereço automaticamente.</div>';
   if(CO.step===3){var e=shipOpt('eco'),x=shipOpt('exp');sp=[e,x].map(function(o){return '<label class="opt"><input type="radio" name="ship" value="'+o.key+'"'+(d.ship===o.key?' checked':'')+'><span><b>'+o.label+'</b><small>'+o.carrier+' · '+o.days+'</small></span><span class="p">'+brl(o.price)+'</span></label>'}).join('')}
-  if(CO.step===4)sp='<label class="opt"><input type="radio" name="pay" value="pix"'+(d.pay==='pix'?' checked':'')+'><span><b>Pix</b><small>Aprovação imediata. A chave de pagamento é enviada pelo WhatsApp após a confirmação do pedido.</small></span></label><label class="opt"><input type="radio" name="pay" value="card"'+(d.pay==='card'?' checked':'')+'><span><b>Cartão de crédito</b><small>Até 12x sem juros. O link de pagamento seguro é enviado pelo WhatsApp após a confirmação do pedido.</small></span></label>';
-  $('#coPanel').innerHTML='<div class="dh"><h3>Finalizar pedido</h3><button class="x" data-close="#ovCo" aria-label="Fechar">✕</button></div><div class="co"><div>'+steps+'<form id="coForm" novalidate>'+sp+'<div class="err" id="coerr">'+esc(CO.err)+'</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem">'+(CO.step>1?'<button type="button" class="btn ghost" data-back>Voltar</button>':'<button type="button" class="btn ghost" data-close="#ovCo" data-tocart>Voltar à sacola</button>')+'<button class="btn" type="submit">'+(CO.step===4?'Confirmar pedido':'Continuar')+'</button></div></form><p class="note" style="margin-top:1.4rem">Remessa internacional enviada da Tailândia. O comprador é responsável pela vinculação do CPF no portal Minhas Importações dos Correios, caso necessário.</p></div><div>'+summaryHTML()+'</div></div>';
+  if(CO.step===4)sp='<div class="opt" style="cursor:default"><span><b>Pagamento seguro pelo Mercado Pago</b><small>Ao continuar, você vai para a página do Mercado Pago e paga com Pix (aprovação imediata) ou cartão de crédito em até 12x sem juros. Os dados do cartão são digitados somente lá.</small></span></div>';
+  $('#coPanel').innerHTML='<div class="dh"><h3>Finalizar pedido</h3><button class="x" data-close="#ovCo" aria-label="Fechar">✕</button></div><div class="co"><div>'+steps+'<form id="coForm" novalidate>'+sp+'<div class="err" id="coerr">'+esc(CO.err)+'</div><div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem">'+(CO.step>1?'<button type="button" class="btn ghost" data-back>Voltar</button>':'<button type="button" class="btn ghost" data-close="#ovCo" data-tocart>Voltar à sacola</button>')+'<button class="btn" type="submit">'+(CO.step===4?'Ir para o pagamento':'Continuar')+'</button></div></form><p class="note" style="margin-top:1.4rem">Remessa internacional enviada da Tailândia. O comprador é responsável pela vinculação do CPF no portal Minhas Importações dos Correios, caso necessário.</p></div><div>'+summaryHTML()+'</div></div>';
 }
 function grab(){
   var m={c_email:'email',c_name:'name',c_phone:'phone',c_cep:'cep',c_street:'street',c_num:'num',c_comp:'comp',c_bairro:'bairro',c_city:'city',c_uf:'uf'};
@@ -595,20 +601,48 @@ async function cepLookup(v){
   }catch(e){if(msg)msg.textContent='Não foi possível buscar o CEP agora. Preencha o endereço manualmente.'}
 }
 function orderText(o){
-  return 'Olá! Pedido '+o.number+' feito pelo site.\n'+o.items.map(function(i){return i.qty+'x '+i.name+(i.size?' ('+i.size+')':'')+' - '+brl(i.price*i.qty)}).join('\n')+'\nSubtotal: '+brl(o.subtotal)+'\nFrete ('+o.shipping.label+'): '+brl(o.shipping.price)+'\nImpostos (estimativa): '+brl(o.taxes)+'\nTotal: '+brl(o.total)+'\nPagamento: '+(o.payment==='pix'?'Pix':'Cartão de crédito')+'\nCliente: '+o.contact.name+' | '+o.contact.email+' | '+o.contact.phone+'\nEndereço: '+o.address.street+', '+o.address.num+(o.address.comp?' - '+o.address.comp:'')+', '+o.address.bairro+', '+o.address.city+'/'+o.address.uf+', CEP '+o.address.cep;
+  return 'Olá! Pedido '+o.number+' feito pelo site.\n'+o.items.map(function(i){return i.qty+'x '+i.name+(i.size?' ('+i.size+')':'')+' - '+brl(i.price*i.qty)}).join('\n')+'\nSubtotal: '+brl(o.subtotal)+'\nFrete ('+o.shipping.label+'): '+brl(o.shipping.price)+'\nImpostos (estimativa): '+brl(o.taxes)+'\nTotal: '+brl(o.total)+'\nPagamento: Mercado Pago (Pix ou cartão)'+'\nCliente: '+o.contact.name+' | '+o.contact.email+' | '+o.contact.phone+'\nEndereço: '+o.address.street+', '+o.address.num+(o.address.comp?' - '+o.address.comp:'')+', '+o.address.bairro+', '+o.address.city+'/'+o.address.uf+', CEP '+o.address.cep;
 }
 async function placeOrder(){
-  var d=CO.data,sh=shipOpt(d.ship),t=totals(sh.price);
-  var o={number:'IST-'+Date.now().toString(36).toUpperCase().slice(-6),createdAt:new Date().toISOString(),status:'novo',
-    items:CART.map(function(i){var p=find(i.id)||{};return {id:i.id,name:p.name||i.id,size:i.size,qty:i.qty,price:p.price||0}}),
-    contact:{name:d.name,email:d.email,phone:d.phone},address:{cep:d.cep,street:d.street,num:d.num,comp:d.comp,bairro:d.bairro,city:d.city,uf:d.uf.toUpperCase()},
-    shipping:{key:sh.key,label:sh.label,price:sh.price,days:sh.days},payment:d.pay,subtotal:t.sub,taxes:t.tax,total:t.total};
-  S.orders.unshift(o);save();
-  if(cdb){try{await cdb.collection('orders').doc(o.number).set(o)}catch(e){}}
-  CART=[];saveCart();renderCartBadge();
-  var txt=orderText(o),mail=S.settings.email?'mailto:'+S.settings.email+'?subject='+encodeURIComponent('Pedido '+o.number)+'&body='+encodeURIComponent(txt):'';
-  $('#coPanel').innerHTML='<div class="dh"><h3>Pedido recebido</h3><button class="x" data-close="#ovCo" aria-label="Fechar">✕</button></div><div class="okbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="m7.500 12.500 3 3 6-7"/></svg><h2 style="font-size:1.8rem">Pedido confirmado</h2><div class="num">'+o.number+'</div><p style="max-width:52ch;color:#cfcdc6">Anotamos seu pedido de '+brl(o.total)+'. Para concluir, envie o resumo no WhatsApp da loja: por lá combinamos o pagamento ('+(o.payment==='pix'?'Pix':'cartão')+') e o envio.</p><a class="btn" target="_blank" rel="noopener" href="'+wa(txt)+'">Enviar resumo no WhatsApp</a>'+(mail?'<a class="btn ghost" href="'+esc(mail)+'">Enviar resumo por e-mail</a>':'')+'<button class="lnk" data-close="#ovCo">Voltar à loja</button></div>';
-  $('#ovCo').scrollTop=0;
+  var d=CO.data,sh=shipOpt(d.ship),btn=$('#coForm button[type=submit]'),er=$('#coerr');
+  if(btn){btn.disabled=true;btn.textContent='Aguarde…'}
+  try{
+    var r=await fetch('/api/create-payment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      items:CART.map(function(i){return {id:i.id,size:i.size,qty:i.qty}}),shipKey:sh.key,
+      contact:{name:d.name,email:d.email,phone:d.phone},
+      address:{cep:d.cep,street:d.street,num:d.num,comp:d.comp,bairro:d.bairro,city:d.city,uf:d.uf.toUpperCase()}})});
+    var j=await r.json();
+    if(!r.ok||!j.init_point)throw new Error(j.error||'Não foi possível iniciar o pagamento.');
+    var t=totals(sh.price);
+    var o={number:j.number,createdAt:new Date().toISOString(),status:'aguardando pagamento',
+      items:CART.map(function(i){var p=find(i.id)||{};return {id:i.id,name:p.name||i.id,size:i.size,qty:i.qty,price:p.price||0}}),
+      contact:{name:d.name,email:d.email,phone:d.phone},address:{cep:d.cep,street:d.street,num:d.num,comp:d.comp,bairro:d.bairro,city:d.city,uf:d.uf.toUpperCase()},
+      shipping:{key:sh.key,label:sh.label,price:sh.price,days:sh.days},payment:'mp',subtotal:t.sub,taxes:t.tax,total:j.total||t.sub+sh.price};
+    S.orders.unshift(o);save();
+    location.href=j.init_point;
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='Ir para o pagamento'}
+    if(er)er.textContent=e.message||'Erro ao iniciar o pagamento. Tente novamente ou peça pelo WhatsApp.';
+  }
+}
+function handleReturn(){
+  var q=new URLSearchParams(location.search),r=q.get('retorno'),n=q.get('pedido');
+  if(!r)return;
+  try{history.replaceState(null,'',location.pathname)}catch(e){}
+  var o=S.orders.filter(function(x){return x.number===n})[0],ok=r==='sucesso',pend=r==='pendente';
+  if(ok||pend){CART=[];saveCart();renderCartBadge();if(o){o.status=ok?'pago':'pagamento em análise';save()}}
+  var txt=o?orderText(o):'Olá! Fiz o pedido '+(n||'')+' pelo site e gostaria de confirmar.';
+  var title=ok?'Pagamento aprovado':pend?'Pagamento em análise':'Pagamento não concluído';
+  var msg=ok?'Recebemos o pagamento do pedido. Envie o resumo no WhatsApp para combinarmos o envio.':pend?'Seu pagamento está sendo processado (o Pix pode levar alguns minutos). Assim que for aprovado, seguimos com o envio. Você pode enviar o resumo no WhatsApp.':'O pagamento não foi concluído e nada foi cobrado. Sua sacola continua salva, e você pode tentar de novo ou pedir pelo WhatsApp.';
+  $('#coPanel').innerHTML='<div class="dh"><h3>'+title+'</h3><button class="x" data-close="#ovCo" aria-label="Fechar">✕</button></div><div class="okbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:'+(ok||pend?'var(--ok)':'var(--red)')+'"><circle cx="12" cy="12" r="10"/>'+(ok||pend?'<path d="m7.500 12.500 3 3 6-7"/>':'<path d="m9 9 6 6m0-6-6 6"/>')+'</svg><h2 style="font-size:1.8rem">'+title+'</h2>'+(n?'<div class="num">'+esc(n)+'</div>':'')+'<p style="max-width:52ch;color:#cfcdc6">'+msg+'</p><a class="btn" target="_blank" rel="noopener" href="'+wa(txt)+'">Enviar resumo no WhatsApp</a><button class="lnk" data-close="#ovCo">Voltar à loja</button></div>';
+  show('#ovCo',true);
+}
+function applyCatalog(){
+  fetch('catalog.json',{cache:'no-store'}).then(function(r){return r.json()}).then(function(c){
+    if(c.settings){['shipEco','shipExp','taxRate'].forEach(function(k){if(c.settings[k]!=null)S.settings[k]=c.settings[k]})}
+    (c.products||[]).forEach(function(cp){var p=find(cp.id);if(p){p.price=cp.price;if(cp.name)p.name=cp.name;if(cp.oldPrice!=null)p.oldPrice=cp.oldPrice}});
+    renderAll();
+  }).catch(function(){});
 }
 
 /* ---------- info pages ---------- */
@@ -752,8 +786,9 @@ function reveal(){
   setTimeout(function(){$$('.rv:not(.in)').forEach(function(x){x.classList.add('in')})},2600);
 }
 
-renderAll();reveal();route();cloud();
+renderAll();reveal();route();cloud();applyCatalog();handleReturn();
 })();
 </script>
 
-</body></html>
+</body>
+</html>
