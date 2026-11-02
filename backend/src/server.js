@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -10,6 +11,15 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseConfigured = Boolean(supabaseUrl && supabaseServiceKey);
+const supabase = supabaseConfigured
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null;
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -35,8 +45,30 @@ app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "ok",
     service: "israel-santos-thaishop-api",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    integrations: { supabaseConfigured }
   });
+});
+
+app.get("/health/database", async (_req, res) => {
+  if (!supabase) {
+    return res.status(503).json({
+      status: "not_configured",
+      message: "Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server."
+    });
+  }
+
+  try {
+    const { error } = await supabase.from("products").select("id").limit(1);
+    if (error) throw error;
+    return res.status(200).json({ status: "connected", database: "supabase" });
+  } catch (error) {
+    console.error("Supabase health check failed:", error.message);
+    return res.status(503).json({
+      status: "unavailable",
+      message: "Database connection or schema check failed."
+    });
+  }
 });
 
 app.use((err, _req, res, _next) => {
