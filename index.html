@@ -418,29 +418,48 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify({settings:S.settings
 try{CART=JSON.parse(localStorage.getItem(CKEY)||'[]')}catch(e){CART=[]}
 function saveCart(){try{localStorage.setItem(CKEY,JSON.stringify(CART))}catch(e){}}
 
-/* ---------- cloud (shared data when this viewer can use db) ---------- */
+/* ---------- API integration ---------- */
+var API_BASE='https://israelsantos.onrender.com';
+var apiCatalogState='loading',apiCatalogError='';
 var cdb=null,cuser=null,canW=false;
-function applyCloud(){if(S.pInit&&S.dbProducts){S.products=S.dbProducts.slice();}renderAll()}
+function mapApiProduct(p){
+  return {
+    id:p.slug || p.id,
+    dbId:p.id,
+    name:p.name || '',
+    brand:p.brand || '',
+    cat:p.category || 'Acessórios',
+    price:Number(p.price || 0),
+    oldPrice:p.compare_at_price==null?null:Number(p.compare_at_price),
+    badge:p.badge || '',
+    sizes:Array.isArray(p.sizes)?p.sizes:[],
+    best:!!p.is_featured,
+    desc:p.description || '',
+    images:(Array.isArray(p.images)?p.images:[]).length?p.images:(p.image_url?[p.image_url]:[]),
+    stock:p.stock==null?null:Number(p.stock),
+    installments:p.installments || 12
+  };
+}
 async function cloud(){
+  apiCatalogState='loading';
   try{
-    if(!window.claude||!window.claude.use)return;
-    cuser=await window.claude.use('user');cdb=await window.claude.use('db');
-    if(!cdb)return;
-    canW=!!(cuser&&cuser.canEdit&&cuser.canEdit());
-    cdb.doc('config/main').onSnapshot(function(s){
-      if(!s.exists)return;var d=s.data()||{};
-      if(d.settings){for(var k in d.settings)S.settings[k]=d.settings[k]}
-      if(d.testimonials)S.testimonials=d.testimonials.slice();
-      S.pInit=!!d.pInit;applyCloud();
-    },function(){});
-    cdb.collection('products').onSnapshot(function(s){
-      S.dbProducts=s.docs.map(function(x){return x.data()}).sort(function(a,b){return (a.order||0)-(b.order||0)});applyCloud();
-    },function(){});
-    if(canW){
-      cdb.collection('orders').orderBy('createdAt','desc').limit(200).onSnapshot(function(s){S.cloudOrders=s.docs.map(function(x){return x.data()});if(admOpen)renderAdm()},function(){});
-      try{var h=await cdb.doc('private/admin').get();if(h.exists&&h.data().hash){localStorage.setItem(AKEY,h.data().hash)}}catch(e){}
+    var response=await fetch(API_BASE+'/api/products?limit=50',{method:'GET',headers:{'Accept':'application/json'}});
+    if(!response.ok)throw new Error('API respondeu HTTP '+response.status);
+    var payload=await response.json();
+    if(!payload || !Array.isArray(payload.products))throw new Error('Resposta de catálogo inválida');
+    if(payload.products.length){
+      S.products=payload.products.map(mapApiProduct);
+      apiCatalogState='connected';
+      save();
+      renderAll();
+    }else{
+      apiCatalogState='empty';
     }
-  }catch(e){}
+  }catch(error){
+    apiCatalogState='error';
+    apiCatalogError=error.message || 'Falha ao consultar catálogo';
+    console.warn('Catálogo remoto indisponível; mantendo catálogo local.',apiCatalogError);
+  }
 }
 async function cfgPush(){if(!(cdb&&canW))return;try{await cdb.doc('config/main').set({settings:S.settings,testimonials:S.testimonials,pInit:S.pInit})}catch(e){toast('Não foi possível sincronizar as configurações.')}}
 async function ensureInit(){
