@@ -25,4 +25,4 @@ This repository includes a Render Blueprint at the repository root.
 Do not share the service URL with customers yet. This is a technical preview until authentication, order creation, payment processing, storefront integration and production testing are complete.
 
 ## Cost
-The Blueprint uses Render's paid Starter plan to avoid relying on a sleeping free service for a store API. Check current pricing in Render before creating the service.
+The Blueprint uses Render's Free plan so the project can be deployed without a payment method. Free web services spin down after 15 minutes of inactivity and may take about one minute to wake on the next request. Render documents these free instances as suitable for previews and testing, not production commerce. Do not promise customers production-grade availability on this deployment. Review current limits before launch.
