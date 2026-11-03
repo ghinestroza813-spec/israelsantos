@@ -695,7 +695,7 @@ async function signInAdmin(email,password){
   await adminLoadProducts();
   return session;
 }
-async function adminLoadProducts(){
+async async function adminLoadProducts(){
   var session=getAdminSession();
   if(!session||!session.access_token)return false;
   try{
