@@ -90,7 +90,8 @@ const productInput = z.object({
   image_url: z.string().url().optional().nullable(),
   images: z.array(z.string().url()).max(20).optional().default([]),
   sizes: z.array(z.string().max(40)).max(30).optional().default([]),
-  is_active: z.boolean().optional().default(true),
+  is_active: z.boolean().optional().default(false),
+  needs_review: z.boolean().optional().default(true),
   is_featured: z.boolean().optional().default(false),
   badge: z.string().max(100).optional().nullable(),
   stock: z.number().int().nonnegative().optional().nullable(),
@@ -194,6 +195,48 @@ app.post("/api/admin/products", requireSupabase, requireAdmin, async (req, res) 
   } catch (error) {
     console.error("Product creation failed:", error.message);
     return res.status(500).json({ error: "Could not create product." });
+  }
+});
+
+// Update and delete operations are restricted to authenticated administrators.
+app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, res) => {
+  const parsed = productInput.partial().strict().safeParse(req.body);
+  if (!parsed.success || Object.keys(parsed.data || {}).length === 0) {
+    return res.status(400).json({ error: "Invalid product update.", details: parsed.success ? undefined : parsed.error.flatten() });
+  }
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .update(parsed.data)
+      .eq("id", req.params.id)
+      .select("id, slug, name, price, is_active, needs_review")
+      .maybeSingle();
+    if (error) {
+      if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." });
+      throw error;
+    }
+    if (!data) return res.status(404).json({ error: "Product not found." });
+    return res.json({ product: data });
+  } catch (error) {
+    console.error("Product update failed:", error.message);
+    return res.status(500).json({ error: "Could not update product." });
+  }
+});
+
+app.delete("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", req.params.id)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Product not found." });
+    return res.status(200).json({ deleted: true, id: data.id });
+  } catch (error) {
+    console.error("Product deletion failed:", error.message);
+    return res.status(500).json({ error: "Could not delete product." });
   }
 });
 
