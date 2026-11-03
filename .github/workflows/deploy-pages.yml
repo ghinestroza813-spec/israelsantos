@@ -23,6 +23,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Validate storefront JavaScript syntax
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          class Scripts(HTMLParser):
+              def __init__(self): super().__init__(); self.inside=False; self.parts=[]
+              def handle_starttag(self, tag, attrs):
+                  if tag == 'script' and not dict(attrs).get('src'): self.inside=True
+              def handle_endtag(self, tag):
+                  if tag == 'script': self.inside=False
+              def handle_data(self, data):
+                  if self.inside: self.parts.append(data)
+          parser=Scripts()
+          parser.feed(open('index.html', encoding='utf-8').read())
+          open('/tmp/storefront.js','w',encoding='utf-8').write('\n'.join(parser.parts))
+          PY
+          node --check /tmp/storefront.js
       - name: Prepare storefront
         run: |
           mkdir -p dist
