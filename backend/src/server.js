@@ -35,7 +35,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use("/api", rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 100,
@@ -118,6 +118,45 @@ app.get("/health/database", requireSupabase, async (_req, res) => {
   } catch (error) {
     console.error("Supabase health check failed:", error.message);
     return res.status(503).json({ status: "unavailable", message: "Database connection or schema check failed." });
+  }
+});
+
+// Upload one product image from the trusted Google Apps Script integration.
+app.post("/api/integrations/sheets/images", requireSupabase, async (req, res) => {
+  const configuredSecret = process.env.CATALOG_SYNC_SECRET;
+  const suppliedSecret = req.get("x-catalog-sync-secret");
+  if (!configuredSecret) return res.status(503).json({ error: "Catalog sync is not configured." });
+  if (!suppliedSecret || suppliedSecret.length !== configuredSecret.length ||
+      !require("crypto").timingSafeEqual(Buffer.from(suppliedSecret), Buffer.from(configuredSecret))) {
+    return res.status(401).json({ error: "Invalid integration credentials." });
+  }
+
+  const input = z.object({
+    fileName: z.string().trim().min(1).max(180),
+    mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+    base64: z.string().min(1).max(7_000_000)
+  }).strict().safeParse(req.body);
+  if (!input.success) return res.status(400).json({ error: "Invalid image upload data." });
+
+  try {
+    const bytes = Buffer.from(input.data.base64, "base64");
+    if (!bytes.length || bytes.length > 5 * 1024 * 1024 || bytes.toString("base64").replace(/=+$/, "") !== input.data.base64.replace(/=+$/, "")) {
+      return res.status(413).json({ error: "Image must be valid base64 and no larger than 5 MB." });
+    }
+    const ext = ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" })[input.data.mimeType];
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET || "israel santos";
+    const objectPath = `products/${require("crypto").randomUUID()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, bytes, {
+      contentType: input.data.mimeType,
+      cacheControl: "31536000",
+      upsert: false
+    });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    return res.status(201).json({ image_url: data.publicUrl, path: objectPath, bucket });
+  } catch (error) {
+    console.error("Google Sheets image upload failed:", error.message);
+    return res.status(500).json({ error: "Could not upload product image to storage." });
   }
 });
 
