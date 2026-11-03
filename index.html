@@ -665,12 +665,31 @@ async function signInAdmin(email,password){
   var session={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:Date.now()+(Number(data.expires_in||3600)*1000),user:data.user};
   if(!(await verifyAdminSession(session)))throw new Error('Login válido, mas este usuário não está autorizado como administrador em admin_users.');
   setAdminSession(session);
+  await adminLoadProducts();
   return session;
+}
+async function adminLoadProducts(){
+  var session=getAdminSession();
+  if(!session||!session.access_token)return false;
+  try{
+    var response=await fetch(API_BASE+'/api/admin/products',{headers:{'Authorization':'Bearer '+session.access_token,'Accept':'application/json'}});
+    var payload=await response.json().catch(function(){return {}});
+    if(!response.ok)throw new Error(payload.error||'Não foi possível carregar o catálogo administrativo.');
+    if(!Array.isArray(payload.products))throw new Error('Resposta de catálogo inválida.');
+    S.products=payload.products.map(mapApiProduct);
+    S.products.forEach(function(p,i){p.order=i});
+    save();
+    return true;
+  }catch(error){
+    console.warn('Admin catalog load failed:',error.message);
+    toast(error.message||'Falha ao carregar produtos do banco.');
+    return false;
+  }
 }
 function signOutAdmin(){clearAdminSession();admAuth=false;renderAdm()}
 function openAdmin(){admOpen=true;admAuth=false;renderAdm();show('#ovAdm',true);$('#ovAdm').scrollTop=0;
   var session=getAdminSession();
-  if(session)verifyAdminSession(session).then(function(ok){if(ok){admAuth=true;renderAdm()}else{clearAdminSession();renderAdm()}});
+  if(session)verifyAdminSession(session).then(async function(ok){if(ok){admAuth=true;await adminLoadProducts();renderAdm()}else{clearAdminSession();renderAdm()}});
 }
 function closeAdmin(){admOpen=false;admAuth=false;editing=null;show('#ovAdm',false);if(location.hash==='#admin')history.replaceState(null,'',location.pathname+location.search)}
 function renderAdm(){
