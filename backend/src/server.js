@@ -21,6 +21,8 @@ const supabase = supabaseConfigured
   : null;
 
 app.disable("x-powered-by");
+// Render runs the app behind one trusted reverse proxy.
+app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
