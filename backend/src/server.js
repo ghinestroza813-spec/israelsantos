@@ -159,6 +159,21 @@ app.get("/api/admin/me", requireSupabase, requireAdmin, (req, res) => {
   res.json({ admin: req.admin });
 });
 
+// Protected admin catalog: includes inactive products awaiting review.
+app.get("/api/admin/products", requireSupabase, requireAdmin, async (_req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_active, is_featured, badge, stock, installments, sort_order, needs_review")
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    return res.json({ products: data || [] });
+  } catch (error) {
+    console.error("Admin catalog query failed:", error.message);
+    return res.status(503).json({ error: "Admin catalog is temporarily unavailable." });
+  }
+});
+
 // First protected catalog write endpoint. Payment/order endpoints will be added separately.
 app.post("/api/admin/products", requireSupabase, requireAdmin, async (req, res) => {
   const parsed = productInput.safeParse(req.body);
