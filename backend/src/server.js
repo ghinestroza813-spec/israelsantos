@@ -121,6 +121,62 @@ app.get("/health/database", requireSupabase, async (_req, res) => {
   }
 });
 
+// Google Sheets intake: shared secret is stored only in Render environment variables.
+// This endpoint INSERTS new products as inactive/pending review; it never updates existing rows.
+app.post("/api/integrations/sheets/products", requireSupabase, async (req, res) => {
+  const configuredSecret = process.env.CATALOG_SYNC_SECRET;
+  const suppliedSecret = req.get("x-catalog-sync-secret");
+  if (!configuredSecret) return res.status(503).json({ error: "Catalog sync is not configured." });
+  if (!suppliedSecret || suppliedSecret.length !== configuredSecret.length ||
+      !require("crypto").timingSafeEqual(Buffer.from(suppliedSecret), Buffer.from(configuredSecret))) {
+    return res.status(401).json({ error: "Invalid integration credentials." });
+  }
+
+  const sheetProductInput = z.object({
+    slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    name: z.string().trim().min(2).max(180),
+    description: z.string().max(5000).optional().default(""),
+    brand: z.string().max(100).optional().nullable(),
+    category: z.string().max(100).optional().nullable(),
+    price: z.number().nonnegative(),
+    compare_at_price: z.number().nonnegative().optional().nullable(),
+    sku: z.string().max(80).optional().nullable(),
+    image_url: z.string().url().optional().nullable(),
+    images: z.array(z.string().url()).max(20).optional().default([]),
+    sizes: z.array(z.string().max(40)).max(30).optional().default([]),
+    stock: z.number().int().nonnegative().optional().nullable(),
+    installments: z.number().int().min(1).max(24).optional().nullable()
+  }).strict();
+  const parsed = sheetProductInput.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid product data.", details: parsed.error.flatten() });
+
+  try {
+    const { data: existing, error: lookupError } = await supabase
+      .from("products").select("id").or(
+        parsed.data.sku
+          ? `slug.eq.${parsed.data.slug},sku.eq.${parsed.data.sku}`
+          : `slug.eq.${parsed.data.slug}`
+      ).limit(1);
+    if (lookupError) throw lookupError;
+    if (existing && existing.length) return res.status(409).json({ error: "Product with this slug or SKU already exists; no changes were made." });
+
+    const { data, error } = await supabase.from("products").insert({
+      ...parsed.data,
+      is_active: false,
+      needs_review: true,
+      is_featured: false
+    }).select("id, slug, name, is_active, needs_review").single();
+    if (error) {
+      if (error.code === "23505") return res.status(409).json({ error: "Duplicate slug or SKU; no changes were made." });
+      throw error;
+    }
+    return res.status(201).json({ product: data, status: "pending_approval" });
+  } catch (error) {
+    console.error("Google Sheets catalog intake failed:", error.message);
+    return res.status(500).json({ error: "Could not receive catalog product." });
+  }
+});
+
 // Public catalog: only active products and only storefront-safe columns.
 app.get("/api/products", requireSupabase, async (req, res) => {
   try {
