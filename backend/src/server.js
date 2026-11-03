@@ -151,14 +151,19 @@ app.post("/api/integrations/sheets/products", requireSupabase, async (req, res) 
   if (!parsed.success) return res.status(400).json({ error: "Invalid product data.", details: parsed.error.flatten() });
 
   try {
-    const { data: existing, error: lookupError } = await supabase
-      .from("products").select("id").or(
-        parsed.data.sku
-          ? `slug.eq.${parsed.data.slug},sku.eq.${parsed.data.sku}`
-          : `slug.eq.${parsed.data.slug}`
-      ).limit(1);
-    if (lookupError) throw lookupError;
-    if (existing && existing.length) return res.status(409).json({ error: "Product with this slug or SKU already exists; no changes were made." });
+    const { data: slugMatch, error: slugError } = await supabase
+      .from("products").select("id").eq("slug", parsed.data.slug).limit(1);
+    if (slugError) throw slugError;
+    let skuMatch = [];
+    if (parsed.data.sku) {
+      const { data, error } = await supabase
+        .from("products").select("id").eq("sku", parsed.data.sku).limit(1);
+      if (error) throw error;
+      skuMatch = data || [];
+    }
+    if ((slugMatch && slugMatch.length) || skuMatch.length) {
+      return res.status(409).json({ error: "Product with this slug or SKU already exists; no changes were made." });
+    }
 
     const { data, error } = await supabase.from("products").insert({
       ...parsed.data,
