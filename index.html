@@ -425,6 +425,7 @@ var cdb=null,cuser=null,canW=false;
 function mapApiProduct(p){
   return {
     id:p.slug || p.id,
+    slug:p.slug || '',
     dbId:p.id,
     name:p.name || '',
     brand:p.brand || '',
@@ -435,10 +436,36 @@ function mapApiProduct(p){
     sizes:Array.isArray(p.sizes)?p.sizes:[],
     best:!!p.is_featured,
     desc:p.description || '',
+    image_url:p.image_url || (Array.isArray(p.images)&&p.images[0]) || '',
     images:(Array.isArray(p.images)?p.images:[]).length?p.images:(p.image_url?[p.image_url]:[]),
     stock:p.stock==null?null:Number(p.stock),
-    installments:p.installments || 12
+    installments:p.installments || 12,
+    isActive:!!p.is_active,
+    needsReview:!!p.needs_review
   };
+}
+async function adminSaveProduct(payload,dbId){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente no painel.');
+  var response=await fetch(API_BASE+'/api/admin/products'+(dbId?'/'+encodeURIComponent(dbId):''),{
+    method:dbId?'PATCH':'POST',
+    headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json','Accept':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Não foi possível salvar o produto.');
+  return result.product;
+}
+async function adminDeleteProduct(dbId){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente no painel.');
+  var response=await fetch(API_BASE+'/api/admin/products/'+encodeURIComponent(dbId),{
+    method:'DELETE',
+    headers:{'Authorization':'Bearer '+session.access_token,'Accept':'application/json'}
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Não foi possível remover o produto.');
+  return result;
 }
 async function cloud(){
   apiCatalogState='loading';
@@ -709,7 +736,7 @@ function renderAdm(){
 var draftImgs=[];
 function prodForm(){
   var p=editing,isNew=!find(p.id);
-  return '<h3>'+(isNew?'Novo produto':'Editar produto')+'</h3><form id="pForm"><div class="row2">'+fld('f_name','Nome',p.name)+fld('f_brand','Marca',p.brand)+'</div><div class="row2"><div class="fld"><label for="f_cat">Categoria</label><select id="f_cat">'+CATS.map(function(c){return '<option'+(p.cat===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></div>'+fld('f_badge','Selo do card',p.badge||'')+'</div><div class="row2">'+fld('f_price','Preço (R$)',p.price,'inputmode="decimal"')+fld('f_old','Preço riscado (opcional)',p.oldPrice||'','inputmode="decimal"')+'</div><div class="row2">'+fld('f_rate','Nota 0 a 5 (opcional)',p.rating||'','inputmode="decimal"')+fld('f_rev','Nº de avaliações (opcional)',p.reviews||'','inputmode="numeric"')+'</div><div class="row2">'+fld('f_stock','Estoque (vazio = sem controle)',p.stock===undefined||p.stock===null?'':p.stock,'inputmode="numeric"')+fld('f_inst','Parcelas máximas',p.installments||12,'inputmode="numeric"')+'</div>'+fld('f_sizes','Tamanhos (separados por vírgula; vazio se não houver)',(p.sizes||[]).join(', '))+'<div class="fld"><label for="f_desc">Descrição</label><textarea id="f_desc" rows="3">'+esc(p.desc||'')+'</textarea></div><label class="chk"><input type="checkbox" id="f_best"'+(p.best?' checked':'')+'> Mostrar em “Mais vendidos”</label><div class="fld"><label>Fotos (a primeira é a capa)</label><input type="file" id="f_files" accept="image/*" multiple></div><div class="photos" id="f_photos">'+draftImgs.map(function(s,i){return '<div><img alt="" src="'+esc(s)+'"><button type="button" data-rmimg="'+i+'">×</button></div>'}).join('')+'</div><p class="note" style="margin-bottom:1rem">Sem fotos enviadas, o card usa uma ilustração provisória.</p><div style="display:flex;gap:.6rem;flex-wrap:wrap"><button class="btn" type="submit">Salvar produto</button><button class="btn ghost" type="button" data-cancelprod>Cancelar</button></div></form>';
+  return '<h3>'+(isNew?'Novo produto':'Editar produto')+'</h3><form id="pForm"><div class="row2">'+fld('f_name','Nome',p.name)+fld('f_brand','Marca',p.brand)+'</div><div class="row2"><div class="fld"><label for="f_cat">Categoria</label><select id="f_cat">'+CATS.map(function(c){return '<option'+(p.cat===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></div>'+fld('f_badge','Selo do card',p.badge||'')+'</div><div class="row2">'+fld('f_price','Preço (R$)',p.price,'inputmode="decimal"')+fld('f_old','Preço riscado (opcional)',p.oldPrice||'','inputmode="decimal"')+'</div><div class="row2">'+fld('f_stock','Estoque (vazio = sem controle)',p.stock===undefined||p.stock===null?'':p.stock,'inputmode="numeric"')+fld('f_inst','Parcelas máximas',p.installments||12,'inputmode="numeric"')+'</div>'+fld('f_sizes','Tamanhos (separados por vírgula; vazio se não houver)',(p.sizes||[]).join(', '))+fld('f_image_url','URL da imagem (https://...)',p.image_url||(p.images&&p.images[0])||'')+'<div class="fld"><label for="f_desc">Descrição</label><textarea id="f_desc" rows="3">'+esc(p.desc||'')+'</textarea></div><label class="chk"><input type="checkbox" id="f_best"'+(p.best?' checked':'')+'> Mostrar em “Mais vendidos”</label><label class="chk"><input type="checkbox" id="f_active"'+(p.isActive?' checked':'')+'> Publicar na loja</label><label class="chk"><input type="checkbox" id="f_review"'+(p.needsReview!==false?' checked':'')+'> Marcar para revisão</label><p class="note" style="margin:1rem 0">Para imagens, informe um endereço HTTPS público. Produtos novos ficam fora da loja até você marcar “Publicar na loja”.</p><div style="display:flex;gap:.6rem;flex-wrap:wrap"><button class="btn" type="submit">Salvar produto</button><button class="btn ghost" type="button" data-cancelprod>Cancelar</button></div></form>';
 }
 function shrink(file){
   return new Promise(function(res,rej){
@@ -758,12 +785,15 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-cancelprod]')){editing=null;renderAdm();return}
   if((el=t.closest('[data-rmimg]'))){draftImgs.splice(+el.getAttribute('data-rmimg'),1);keepDraft();renderAdm();return}
   if((el=t.closest('[data-delprod]'))){var id2=el.getAttribute('data-delprod'),pr=find(id2);
-    if(el.getAttribute('data-sure')===id2){S.products=S.products.filter(function(x){return x.id!==id2});save();prodDel(id2);renderAll();toast('Produto removido.')}
-    else{el.setAttribute('data-sure',id2);el.textContent='Confirmar remoção?';setTimeout(function(){if(el.isConnected){el.removeAttribute('data-sure');el.textContent='Remover'}},3500)}return}
+    if(el.getAttribute('data-sure')===id2){
+      if(!pr||!pr.dbId){toast('Não foi possível identificar o produto no banco.');return}
+      el.disabled=true;el.textContent='Removendo...';
+      adminDeleteProduct(pr.dbId).then(async function(){await adminLoadProducts();renderAdm();renderAll();toast('Produto removido do Supabase.')}).catch(function(error){el.disabled=false;el.removeAttribute('data-sure');el.textContent='Remover';toast(error.message||'Falha ao remover produto.')});
+    }else{el.setAttribute('data-sure',id2);el.textContent='Confirmar remoção?';setTimeout(function(){if(el.isConnected){el.removeAttribute('data-sure');el.textContent='Remover'}},3500)}return}
   if((el=t.closest('[data-deltm]'))){S.testimonials.splice(+el.getAttribute('data-deltm'),1);save();cfgPush();renderAll();return}
   if(t.closest('[data-rmhero]')){S.settings.heroImg='';save();cfgPush();renderAll();return}
 });
-function keepDraft(){if(editing){var g=function(id){var x=document.getElementById(id);return x?x.value:''};if(document.getElementById('f_name')){editing.name=g('f_name');editing.brand=g('f_brand');editing.cat=g('f_cat');editing.badge=g('f_badge');editing.price=g('f_price');editing.oldPrice=g('f_old');editing.rating=g('f_rate');editing.reviews=g('f_rev');editing.stock=g('f_stock');editing.installments=g('f_inst');editing.sizes=g('f_sizes').split(',').map(function(s){return s.trim()}).filter(Boolean);editing.desc=g('f_desc');editing.best=document.getElementById('f_best').checked}}}
+function keepDraft(){if(editing){var g=function(id){var x=document.getElementById(id);return x?x.value:''};if(document.getElementById('f_name')){editing.name=g('f_name');editing.brand=g('f_brand');editing.cat=g('f_cat');editing.badge=g('f_badge');editing.price=g('f_price');editing.oldPrice=g('f_old');editing.stock=g('f_stock');editing.installments=g('f_inst');editing.sizes=g('f_sizes').split(',').map(function(s){return s.trim()}).filter(Boolean);editing.desc=g('f_desc');editing.image_url=g('f_image_url');editing.best=document.getElementById('f_best').checked;editing.isActive=document.getElementById('f_active').checked;editing.needsReview=document.getElementById('f_review').checked}}}
 document.addEventListener('submit',async function(e){
   var f=e.target.id;if(!f)return;e.preventDefault();
   if(f==='coForm'){grab();var er=validate();CO.err=er;if(er){$('#coerr').textContent=er;return}
@@ -777,14 +807,18 @@ document.addEventListener('submit',async function(e){
   }
   if(f==='pForm'){
     keepDraft();var p=editing;
-    var price=numLoose(p.price);if(!p.name.trim()||!p.brand.trim()||price==null){toast('Preencha nome, marca e preço.');return}
-    var o={id:p.id,name:p.name.trim(),brand:p.brand.trim(),cat:p.cat,price:price,badge:(p.badge||'').trim(),sizes:p.sizes||[],best:!!p.best,desc:(p.desc||'').trim()};
-    var old=numLoose(p.oldPrice);if(old)o.oldPrice=old;
-    var rt=numLoose(p.rating);if(rt&&rt>0)o.rating=Math.min(5,rt);var rv=numLoose(p.reviews);if(rv&&rv>0)o.reviews=rv;
-    var stk=numLoose(p.stock);if(stk!=null)o.stock=stk;var ins=numLoose(p.installments);o.installments=ins&&ins>0?Math.min(12,ins):12;
-    if(draftImgs.length)o.images=draftImgs.slice();else{var prev=find(p.id);if(prev&&prev.art)o.art=prev.art;else o.art=['glove','#444','#111']}
-    var ix=S.products.findIndex(function(x){return x.id===o.id});if(ix>-1){o.order=S.products[ix].order;S.products[ix]=o}else{o.order=S.products.length;S.products.push(o)}
-    save();editing=null;await prodPush(o);renderAll();toast('Produto salvo.');return}
+    var price=numLoose(p.price),old=numLoose(p.oldPrice),stock=numLoose(p.stock),installments=numLoose(p.installments);
+    if(!p.name.trim()||!p.brand.trim()||price==null||price<0){toast('Preencha nome, marca e um preço válido.');return}
+    if(stock!=null&&(!Number.isInteger(stock)||stock<0)){toast('O estoque deve ser um número inteiro igual ou maior que zero.');return}
+    var imageUrl=(p.image_url||'').trim();
+    if(imageUrl&&!/^https:\/\//i.test(imageUrl)){toast('A imagem precisa ter um endereço HTTPS público.');return}
+    var slug=p.slug;
+    if(!slug){slug=p.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,90)+'-'+Date.now().toString(36)}
+    var payload={slug:slug,name:p.name.trim(),description:(p.desc||'').trim(),brand:p.brand.trim(),category:p.cat,price:price,compare_at_price:old!=null&&old>0?old:null,image_url:imageUrl||null,images:imageUrl?[imageUrl]:[],sizes:p.sizes||[],is_active:!!p.isActive,needs_review:!!p.needsReview,is_featured:!!p.best,badge:(p.badge||'').trim()||null,stock:stock,installments:installments&&installments>0?Math.min(24,installments):12,sort_order:Number.isInteger(p.order)?p.order:S.products.length};
+    var saveButton=e.target.querySelector('button[type=submit]');saveButton.disabled=true;saveButton.textContent='Salvando...';
+    try{await adminSaveProduct(payload,p.dbId||null);await adminLoadProducts();editing=null;draftImgs=[];renderAdm();renderAll();toast('Produto salvo no Supabase.')}
+    catch(error){saveButton.disabled=false;saveButton.textContent='Salvar produto';toast(error.message||'Falha ao salvar produto.')}
+    return}
   if(f==='tmForm'){var nm=$('#t_name').value.trim(),tx=$('#t_text').value.trim();if(!nm||!tx){toast('Informe o nome e o depoimento.');return}S.testimonials.push({name:nm,role:$('#t_role').value.trim(),text:tx});save();await cfgPush();renderAll();return}
   if(f==='cfgForm'){var s=S.settings,g=function(id){return document.getElementById(id).value.trim()};
     s.whatsapp=g('s_wa').replace(/\D/g,'')||s.whatsapp;s.email=g('s_email');s.cnpj=g('s_cnpj');s.instagram=g('s_ig');
