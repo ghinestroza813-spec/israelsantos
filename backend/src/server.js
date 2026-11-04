@@ -238,7 +238,7 @@ app.post("/api/integrations/sheets/products/decision", requireSupabase, async (r
   if (!parsed.success) return res.status(400).json({ error: "Invalid approval decision." });
   try {
     const { data: existing, error: lookupError } = await supabase
-      .from("products").select("id, slug, sku").eq("slug", parsed.data.slug).eq("sku", parsed.data.sku).maybeSingle();
+      .from("products").select("id, slug, sku").eq("slug", parsed.data.slug).eq("sku", parsed.data.sku).eq("is_active", false).eq("needs_review", true).maybeSingle();
     if (lookupError) throw lookupError;
     if (!existing) return res.status(404).json({ error: "Matching pending product not found. No changes made." });
     const approved = parsed.data.decision === "Aprovado";
@@ -294,13 +294,56 @@ app.get("/api/products/:slug", requireSupabase, async (req, res) => {
 app.get("/api/admin/me", requireSupabase, requireAdmin, (req, res) => {
   res.json({ admin: req.admin });
 });
+function requireOwner(req, res, next) {
+  if (!req.admin || req.admin.role !== "admin") return res.status(403).json({ error: "Only the store owner can approve or publish products." });
+  next();
+}
+
+app.post("/api/admin/uploads/product-image", requireSupabase, requireAdmin, async (req, res) => {
+  const input = z.object({ fileName: z.string().trim().min(1).max(180), mimeType: z.enum(["image/jpeg","image/png","image/webp"]), base64: z.string().min(1).max(7_000_000) }).strict().safeParse(req.body);
+  if (!input.success) return res.status(400).json({ error: "Invalid image upload." });
+  try {
+    const bytes = Buffer.from(input.data.base64, "base64");
+    if (!bytes.length || bytes.length > 5*1024*1024 || bytes.toString("base64").replace(/=+$/,"") !== input.data.base64.replace(/=+$/,"")) return res.status(413).json({ error: "Image must be valid base64 and no larger than 5 MB." });
+    const ext = ({ "image/jpeg":"jpg", "image/png":"png", "image/webp":"webp" })[input.data.mimeType];
+    const bucket = process.env.SUPABASE_STORAGE_BUCKET || "israel santos";
+    const objectPath = `products/${require("crypto").randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from(bucket).upload(objectPath, bytes, { contentType: input.data.mimeType, cacheControl: "31536000", upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+    return res.status(201).json({ image_url: data.publicUrl, path: objectPath });
+  } catch (error) {
+    console.error("Admin image upload failed:", error.message);
+    return res.status(500).json({ error: "Could not upload product image." });
+  }
+});
+
+app.post("/api/admin/products/:id/review", requireSupabase, requireAdmin, requireOwner, async (req, res) => {
+  const parsed = z.object({ decision: z.enum(["approve","reject"]), review_notes: z.string().max(1000).optional().default("") }).strict().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid review decision." });
+  try {
+    const approved = parsed.data.decision === "approve";
+    const { data, error } = await supabase.from("products").update({
+      is_active: approved, needs_review: false, reviewed_by: req.admin.id,
+      reviewed_at: new Date().toISOString(), review_notes: parsed.data.review_notes
+    }).eq("id", req.params.id).eq("is_active", false).eq("needs_review", true)
+      .select("id, slug, name, is_active, needs_review, reviewed_at").maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(409).json({ error: "Product is not pending review; no changes made." });
+    return res.json({ product: data, published: approved });
+  } catch (error) {
+    console.error("Product review failed:", error.message);
+    return res.status(500).json({ error: "Could not apply product review." });
+  }
+});
+
 
 // Protected admin catalog: includes inactive products awaiting review.
 app.get("/api/admin/products", requireSupabase, requireAdmin, async (_req, res) => {
   try {
     const { data, error } = await supabase
       .from("products")
-      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_active, is_featured, badge, stock, installments, sort_order, needs_review")
+      .select("id, slug, name, description, brand, category, price, compare_at_price, sku, image_url, images, sizes, is_active, is_featured, badge, stock, installments, sort_order, needs_review, created_by, reviewed_by, reviewed_at, review_notes")
       .order("sort_order", { ascending: true });
     if (error) throw error;
     return res.json({ products: data || [] });
@@ -313,44 +356,37 @@ app.get("/api/admin/products", requireSupabase, requireAdmin, async (_req, res) 
 // First protected catalog write endpoint. Payment/order endpoints will be added separately.
 app.post("/api/admin/products", requireSupabase, requireAdmin, async (req, res) => {
   const parsed = productInput.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid product data.", details: parsed.error.flatten() });
-  }
+  if (!parsed.success) return res.status(400).json({ error: "Invalid product data.", details: parsed.error.flatten() });
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .insert(parsed.data)
-      .select("id, slug, name, price, is_active")
-      .single();
+    const { data, error } = await supabase.from("products").insert({
+      ...parsed.data, is_active: false, needs_review: true, is_featured: false, created_by: req.admin.id
+    }).select("id, slug, name, price, is_active, needs_review, created_by").single();
     if (error) {
       if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." });
       throw error;
     }
-    return res.status(201).json({ product: data });
+    return res.status(201).json({ product: data, status: "pending_approval" });
   } catch (error) {
-    console.error("Product creation failed:", error.message);
-    return res.status(500).json({ error: "Could not create product." });
+    console.error("Product submission failed:", error.message);
+    return res.status(500).json({ error: "Could not submit product for approval." });
   }
 });
 
 // Update and delete operations are restricted to authenticated administrators.
 app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, res) => {
   const parsed = productInput.partial().strict().safeParse(req.body);
-  if (!parsed.success || Object.keys(parsed.data || {}).length === 0) {
-    return res.status(400).json({ error: "Invalid product update.", details: parsed.success ? undefined : parsed.error.flatten() });
-  }
+  if (!parsed.success || Object.keys(parsed.data || {}).length === 0) return res.status(400).json({ error: "Invalid product update.", details: parsed.success ? undefined : parsed.error.flatten() });
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .update(parsed.data)
-      .eq("id", req.params.id)
-      .select("id, slug, name, price, is_active, needs_review")
-      .maybeSingle();
-    if (error) {
-      if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." });
-      throw error;
-    }
-    if (!data) return res.status(404).json({ error: "Product not found." });
+    const { data: current, error: readError } = await supabase.from("products").select("id,is_active,needs_review").eq("id", req.params.id).maybeSingle();
+    if (readError) throw readError;
+    if (!current) return res.status(404).json({ error: "Product not found." });
+    if (req.admin.role !== "admin" && (current.is_active || !current.needs_review)) return res.status(403).json({ error: "Collaborators can edit pending products only." });
+    if (req.admin.role !== "admin" && ("is_active" in parsed.data || "needs_review" in parsed.data || "is_featured" in parsed.data)) return res.status(403).json({ error: "Collaborators cannot change publication or review status." });
+    const safeUpdate = { ...parsed.data };
+    if (req.admin.role !== "admin") { delete safeUpdate.is_active; delete safeUpdate.needs_review; delete safeUpdate.is_featured; }
+    const { data, error } = await supabase.from("products").update(safeUpdate).eq("id", req.params.id)
+      .select("id,slug,name,price,is_active,needs_review").maybeSingle();
+    if (error) { if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." }); throw error; }
     return res.json({ product: data });
   } catch (error) {
     console.error("Product update failed:", error.message);
