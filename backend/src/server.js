@@ -215,7 +215,7 @@ app.post("/api/integrations/sheets/products", requireSupabase, async (req, res) 
       throw error;
     }
     await recordProductActivity(data.id, req.admin.id, "created", { source: "site_admin" });
-    void syncProductReport(data, "created");
+    await syncProductReport(data, "created");
     return res.status(201).json({ product: data, status: "pending_approval" });
   } catch (error) {
     console.error("Google Sheets catalog intake failed:", error.message);
@@ -312,20 +312,30 @@ async function recordProductActivity(productId, actorUserId, action, details) {
   }
 }
 
-// Optional Google Sheets reporting webhook. A reporting outage never blocks catalog work.
+// Google Sheets reporting webhook. Never log the webhook URL, secret, or product data.
 async function syncProductReport(product, action) {
   const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
   const secret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
-  if (!webhook || !secret || typeof fetch !== "function") return;
+  if (!webhook || !secret) {
+    console.error("Google Sheets sync skipped: missing webhook configuration.", {
+      hasUrl: Boolean(webhook), hasSecret: Boolean(secret)
+    });
+    return { ok: false, reason: "missing_configuration" };
+  }
   try {
+    console.log("Google Sheets sync started:", action, product && product.id);
     const response = await fetch(webhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ secret, action, product })
     });
-    if (!response.ok) console.error("Google Sheets report sync returned:", response.status);
+    const responseText = await response.text();
+    console.log("Google Sheets sync response:", response.status, responseText.slice(0, 500));
+    if (!response.ok) return { ok: false, status: response.status };
+    return { ok: true, status: response.status, response: responseText.slice(0, 500) };
   } catch (error) {
     console.error("Google Sheets report sync failed:", error.message);
+    return { ok: false, reason: error.message };
   }
 }
 
@@ -361,7 +371,7 @@ app.post("/api/admin/products/:id/review", requireSupabase, requireAdmin, requir
     if (error) throw error;
     if (!data) return res.status(409).json({ error: "Product is not pending review; no changes made." });
     await recordProductActivity(data.id, req.admin.id, approved ? "approved" : "rejected", { notes: parsed.data.review_notes });
-    void syncProductReport(data, approved ? "approved" : "rejected");
+    await syncProductReport(data, approved ? "approved" : "rejected");
     return res.json({ product: data, published: approved });
   } catch (error) {
     console.error("Product review failed:", error.message);
@@ -422,7 +432,7 @@ app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, 
       .select("id,slug,name,sku,brand,category,price,stock,image_url,is_active,needs_review,created_by").maybeSingle();
     if (error) { if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." }); throw error; }
     await recordProductActivity(data.id, req.admin.id, "updated", { source: "site_admin" });
-    void syncProductReport(data, "updated");
+    await syncProductReport(data, "updated");
     return res.json({ product: data });
   } catch (error) {
     console.error("Product update failed:", error.message);
