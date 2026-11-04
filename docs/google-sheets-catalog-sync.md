@@ -81,7 +81,10 @@ function catalogOnEdit(e) {
   if (!e || !e.range) return;
   const sheet = e.range.getSheet();
   if (sheet.getName() !== "Produtos" || e.range.getRow() < 2) return;
-  if (e.range.getColumn() !== 15 || String(e.value || "").trim().toLowerCase() !== "enviar") return;
+  const editedColumn = e.range.getColumn();
+  const editedValue = String(e.value || "").trim();
+  if (!((editedColumn === 15 && editedValue.toLowerCase() === "enviar") ||
+        (editedColumn === 16 && ["Aprovado", "Rejeitado"].includes(editedValue)))) return;
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) throw new Error("Outra sincronização está em andamento. Tente novamente.");
@@ -92,6 +95,22 @@ function catalogOnEdit(e) {
     const baseUrl = (props.getProperty("API_BASE_URL") || "").replace(/\/$/, "");
     const secret = props.getProperty("CATALOG_SYNC_SECRET");
     if (!baseUrl || !secret) throw new Error("Configure API_BASE_URL e CATALOG_SYNC_SECRET nas propriedades do script.");
+
+    if (editedColumn === 16) {
+      const slug = String(row[3] || "").trim();
+      const sku = String(row[1] || "").trim();
+      if (!slug || !sku) throw new Error("Aprovação exige SKU e Slug preenchidos.");
+      const result = postCatalog_("/api/integrations/sheets/products/decision", {
+        slug, sku, decision: editedValue
+      }, secret, baseUrl);
+      sheet.getRange(rowNumber, 15).setValue(editedValue);
+      sheet.getRange(rowNumber, 17).setValue(result.published ? "Sim" : "Não");
+      sheet.getRange(rowNumber, 19).setValue(new Date());
+      sheet.getRange(rowNumber, 18).setValue(editedValue === "Aprovado"
+        ? "Aprovado e publicado na loja."
+        : "Rejeitado; produto mantido inativo.");
+      return;
+    }
 
     const price = Number(row[9]);
     const compareAt = row[10] === "" ? null : Number(row[10]);
@@ -136,6 +155,7 @@ function catalogOnEdit(e) {
 - Existing products are never updated or deleted by this integration.
 - Duplicate slug/SKU is rejected.
 - Images are uploaded to Storage before product insertion. If product insertion fails, the uploaded image may remain as an unreferenced Storage object; remove it manually after review if needed.
-- Approval/publication remains a manual action in the existing admin panel. The spreadsheet approval columns are tracking fields only.
+- Approval/publication can be initiated only by changing the protected Approval column (P) to `Aprovado` or `Rejeitado`; the Apps Script calls a secret-protected Render endpoint which matches both SKU and slug before changing only that product's `is_active` and `needs_review` fields.
+- Column P must remain protected so only the spreadsheet owner can make the decision. The installable edit trigger runs as the account that installed it; editors cannot bypass sheet protection through normal spreadsheet editing.
 - The installable trigger runs under the Google account that installed it. Drive images must be accessible to that account.
 - Do not expose `CATALOG_SYNC_SECRET` in sheet cells or source code.
