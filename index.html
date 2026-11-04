@@ -854,9 +854,16 @@ document.addEventListener('submit',async function(e){
     if(imageUrl&&!/^https:\/\//i.test(imageUrl)){toast('A imagem precisa ter um endereço HTTPS público.');return}
     var slug=p.slug;
     if(!slug){slug=p.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,90)+'-'+Date.now().toString(36)}
-    var payload={slug:slug,name:p.name.trim(),description:(p.desc||'').trim(),brand:p.brand.trim(),category:p.cat,price:price,compare_at_price:old!=null&&old>0?old:null,image_url:imageUrl||null,images:imageUrl?[imageUrl]:[],sizes:p.sizes||[],is_active:!!p.isActive,needs_review:!!p.needsReview,is_featured:!!p.best,badge:(p.badge||'').trim()||null,stock:stock,installments:installments&&installments>0?Math.min(24,installments):12,sort_order:Number.isInteger(p.order)?p.order:S.products.length};
+    var uploadedImages=[];
+    try{for(var di=0;di<draftImgs.length;di++){uploadedImages.push(await adminUploadProductImage(draftImgs[di]))}}
+    catch(uploadError){toast(uploadError.message||'Falha ao enviar as imagens.');saveButton.disabled=false;saveButton.textContent='Tentar novamente';return}
+    var finalImages=(p.images||[]).filter(function(x){return /^https:\/\//i.test(x)}).concat(uploadedImages);
+    if(imageUrl&&!finalImages.length)finalImages=[imageUrl];
+    if(uploadedImages.length&&!imageUrl)imageUrl=uploadedImages[0];
+    var payload={slug:slug,name:p.name.trim(),description:(p.desc||'').trim(),brand:p.brand.trim(),category:p.cat,price:price,compare_at_price:old!=null&&old>0?old:null,sku:(p.sku||'').trim()||null,image_url:imageUrl||finalImages[0]||null,images:finalImages,sizes:p.sizes||[],badge:(p.badge||'').trim()||null,stock:stock,installments:installments&&installments>0?Math.min(24,installments):12,sort_order:Number.isInteger(p.order)?p.order:S.products.length};
+    if(!p.dbId){payload.is_active=false;payload.needs_review=true;payload.is_featured=false;}
     var saveButton=e.target.querySelector('button[type=submit]');saveButton.disabled=true;saveButton.textContent='Salvando...';
-    try{await adminSaveProduct(payload,p.dbId||null);await adminLoadProducts();editing=null;draftImgs=[];renderAdm();renderAll();toast('Produto salvo no Supabase.')}
+    try{await adminSaveProduct(payload,p.dbId||null);await adminLoadProducts();editing=null;draftImgs=[];renderAdm();renderAll();toast(p.dbId?'Produto atualizado no Supabase.':'Produto enviado para aprovação no Supabase.')}
     catch(error){saveButton.disabled=false;saveButton.textContent='Salvar produto';toast(error.message||'Falha ao salvar produto.')}
     return}
   if(f==='tmForm'){var nm=$('#t_name').value.trim(),tx=$('#t_text').value.trim();if(!nm||!tx){toast('Informe o nome e o depoimento.');return}S.testimonials.push({name:nm,role:$('#t_role').value.trim(),text:tx});save();await cfgPush();renderAll();return}
