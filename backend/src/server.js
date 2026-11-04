@@ -221,6 +221,39 @@ app.post("/api/integrations/sheets/products", requireSupabase, async (req, res) 
   }
 });
 
+// Approval/publication controlled by the protected Google Sheets approval column.
+app.post("/api/integrations/sheets/products/decision", requireSupabase, async (req, res) => {
+  const configuredSecret = process.env.CATALOG_SYNC_SECRET;
+  const suppliedSecret = req.get("x-catalog-sync-secret");
+  if (!configuredSecret) return res.status(503).json({ error: "Catalog sync is not configured." });
+  if (!suppliedSecret || suppliedSecret.length !== configuredSecret.length ||
+      !require("crypto").timingSafeEqual(Buffer.from(suppliedSecret), Buffer.from(configuredSecret))) {
+    return res.status(401).json({ error: "Invalid integration credentials." });
+  }
+  const parsed = z.object({
+    slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    sku: z.string().trim().min(1).max(80),
+    decision: z.enum(["Aprovado", "Rejeitado"])
+  }).strict().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid approval decision." });
+  try {
+    const { data: existing, error: lookupError } = await supabase
+      .from("products").select("id, slug, sku").eq("slug", parsed.data.slug).eq("sku", parsed.data.sku).maybeSingle();
+    if (lookupError) throw lookupError;
+    if (!existing) return res.status(404).json({ error: "Matching pending product not found. No changes made." });
+    const approved = parsed.data.decision === "Aprovado";
+    const { data, error } = await supabase.from("products")
+      .update({ is_active: approved, needs_review: false })
+      .eq("id", existing.id)
+      .select("id, slug, sku, is_active, needs_review").single();
+    if (error) throw error;
+    return res.json({ product: data, decision: parsed.data.decision, published: approved });
+  } catch (error) {
+    console.error("Google Sheets approval decision failed:", error.message);
+    return res.status(500).json({ error: "Could not apply approval decision." });
+  }
+});
+
 // Public catalog: only active products and only storefront-safe columns.
 app.get("/api/products", requireSupabase, async (req, res) => {
   try {
