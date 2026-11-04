@@ -430,14 +430,11 @@ app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, 
 
 app.delete("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("products")
-      .delete()
-      .eq("id", req.params.id)
-      .select("id")
-      .maybeSingle();
+    let query = supabase.from("products").delete().eq("id", req.params.id);
+    if (req.admin.role !== "admin") query = query.eq("is_active", false).eq("needs_review", true);
+    const { data, error } = await query.select("id").maybeSingle();
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Product not found." });
+    if (!data) return res.status(404).json({ error: "Product not found or not eligible for collaborator deletion." });
     return res.status(200).json({ deleted: true, id: data.id });
   } catch (error) {
     console.error("Product deletion failed:", error.message);
