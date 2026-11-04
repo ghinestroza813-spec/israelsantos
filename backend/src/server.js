@@ -214,6 +214,8 @@ app.post("/api/integrations/sheets/products", requireSupabase, async (req, res) 
       if (error.code === "23505") return res.status(409).json({ error: "Duplicate slug or SKU; no changes were made." });
       throw error;
     }
+    await recordProductActivity(data.id, req.admin.id, "created", { source: "site_admin" });
+    void syncProductReport(data, "created");
     return res.status(201).json({ product: data, status: "pending_approval" });
   } catch (error) {
     console.error("Google Sheets catalog intake failed:", error.message);
@@ -299,6 +301,34 @@ function requireOwner(req, res, next) {
   next();
 }
 
+async function recordProductActivity(productId, actorUserId, action, details) {
+  try {
+    const { error } = await supabase.from("product_activity_log").insert({
+      product_id: productId, actor_user_id: actorUserId, action, details: details || {}
+    });
+    if (error) console.error("Product activity log failed:", error.message);
+  } catch (error) {
+    console.error("Product activity log failed:", error.message);
+  }
+}
+
+// Optional Google Sheets reporting webhook. A reporting outage never blocks catalog work.
+async function syncProductReport(product, action) {
+  const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+  const secret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
+  if (!webhook || !secret || typeof fetch !== "function") return;
+  try {
+    const response = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-catalog-report-secret": secret },
+      body: JSON.stringify({ action, product })
+    });
+    if (!response.ok) console.error("Google Sheets report sync returned:", response.status);
+  } catch (error) {
+    console.error("Google Sheets report sync failed:", error.message);
+  }
+}
+
 app.post("/api/admin/uploads/product-image", requireSupabase, requireAdmin, async (req, res) => {
   const input = z.object({ fileName: z.string().trim().min(1).max(180), mimeType: z.enum(["image/jpeg","image/png","image/webp"]), base64: z.string().min(1).max(7_000_000) }).strict().safeParse(req.body);
   if (!input.success) return res.status(400).json({ error: "Invalid image upload." });
@@ -330,6 +360,8 @@ app.post("/api/admin/products/:id/review", requireSupabase, requireAdmin, requir
       .select("id, slug, name, is_active, needs_review, reviewed_at").maybeSingle();
     if (error) throw error;
     if (!data) return res.status(409).json({ error: "Product is not pending review; no changes made." });
+    await recordProductActivity(data.id, req.admin.id, approved ? "approved" : "rejected", { notes: parsed.data.review_notes });
+    void syncProductReport(data, approved ? "approved" : "rejected");
     return res.json({ product: data, published: approved });
   } catch (error) {
     console.error("Product review failed:", error.message);
@@ -387,6 +419,8 @@ app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, 
     const { data, error } = await supabase.from("products").update(safeUpdate).eq("id", req.params.id)
       .select("id,slug,name,price,is_active,needs_review").maybeSingle();
     if (error) { if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." }); throw error; }
+    await recordProductActivity(data.id, req.admin.id, "updated", { source: "site_admin" });
+    void syncProductReport(data, "updated");
     return res.json({ product: data });
   } catch (error) {
     console.error("Product update failed:", error.message);
