@@ -320,8 +320,8 @@ async function syncProductReport(product, action) {
   try {
     const response = await fetch(webhook, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-catalog-report-secret": secret },
-      body: JSON.stringify({ action, product })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret, action, product })
     });
     if (!response.ok) console.error("Google Sheets report sync returned:", response.status);
   } catch (error) {
