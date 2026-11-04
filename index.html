@@ -427,6 +427,7 @@ function mapApiProduct(p){
     id:p.slug || p.id,
     slug:p.slug || '',
     dbId:p.id,
+    sku:p.sku || '',
     name:p.name || '',
     brand:p.brand || '',
     cat:p.category || 'Acessórios',
@@ -455,6 +456,30 @@ async function adminSaveProduct(payload,dbId){
   var result=await response.json().catch(function(){return {}});
   if(!response.ok)throw new Error(result.error||'Não foi possível salvar o produto.');
   return result.product;
+}
+async function adminUploadProductImage(dataUrl){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente.');
+  var parts=String(dataUrl).split(',');
+  if(parts.length!==2||!/^data:image\\/jpeg;base64$/i.test(parts[0]))throw new Error('Formato de imagem inválido.');
+  var response=await fetch(API_BASE+'/api/admin/uploads/product-image',{
+    method:'POST',headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({fileName:'produto-'+Date.now()+'.jpg',mimeType:'image/jpeg',base64:parts[1]})
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Falha ao enviar imagem.');
+  return result.image_url;
+}
+async function adminReviewProduct(dbId,decision){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente.');
+  var response=await fetch(API_BASE+'/api/admin/products/'+encodeURIComponent(dbId)+'/review',{
+    method:'POST',headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({decision:decision})
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Não foi possível revisar o produto.');
+  return result;
 }
 async function adminDeleteProduct(dbId){
   var session=getAdminSession();
