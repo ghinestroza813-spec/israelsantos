@@ -31,7 +31,7 @@ Optional Render environment variables:
 - `GOOGLE_SHEETS_WEBHOOK_URL`: deployed Apps Script Web App URL.
 - `GOOGLE_SHEETS_WEBHOOK_SECRET`: long random secret shared with the Apps Script.
 
-The API posts a compact product event payload after create, update, approve or reject. The Apps Script Web App must validate the `x-catalog-report-secret` header and append/update a row in a report sheet. Reporting sync is best-effort: a Sheets outage never blocks product submission or approval. Never put the Supabase service key in Apps Script or a spreadsheet.
+The API posts a compact product event payload after create, update, approve or reject. The Apps Script Web App source is in `docs/google-sheets-reporting.gs`. Deploy it as a Web App (execute as the owner; access Anyone), then set Script Properties `CATALOG_REPORT_SECRET` and `REPORT_SPREADSHEET_ID`. The API sends the secret in the JSON body because Apps Script Web Apps do not expose arbitrary request headers to `doPost`. The script verifies the secret and appends an audit row to `Relatório de produtos`. Reporting sync is best-effort: a Sheets outage never blocks product submission or approval. Never put the Supabase service key in Apps Script or a spreadsheet.
 
 ## Current implementation status
 

@@ -427,6 +427,7 @@ function mapApiProduct(p){
     id:p.slug || p.id,
     slug:p.slug || '',
     dbId:p.id,
+    sku:p.sku || '',
     name:p.name || '',
     brand:p.brand || '',
     cat:p.category || 'Acessórios',
@@ -455,6 +456,30 @@ async function adminSaveProduct(payload,dbId){
   var result=await response.json().catch(function(){return {}});
   if(!response.ok)throw new Error(result.error||'Não foi possível salvar o produto.');
   return result.product;
+}
+async function adminUploadProductImage(dataUrl){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente.');
+  var parts=String(dataUrl).split(',');
+  if(parts.length!==2||!/^data:image\\/jpeg;base64$/i.test(parts[0]))throw new Error('Formato de imagem inválido.');
+  var response=await fetch(API_BASE+'/api/admin/uploads/product-image',{
+    method:'POST',headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({fileName:'produto-'+Date.now()+'.jpg',mimeType:'image/jpeg',base64:parts[1]})
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Falha ao enviar imagem.');
+  return result.image_url;
+}
+async function adminReviewProduct(dbId,decision){
+  var session=getAdminSession();
+  if(!session||!session.access_token)throw new Error('Sua sessão expirou. Entre novamente.');
+  var response=await fetch(API_BASE+'/api/admin/products/'+encodeURIComponent(dbId)+'/review',{
+    method:'POST',headers:{'Authorization':'Bearer '+session.access_token,'Content-Type':'application/json'},
+    body:JSON.stringify({decision:decision})
+  });
+  var result=await response.json().catch(function(){return {}});
+  if(!response.ok)throw new Error(result.error||'Não foi possível revisar o produto.');
+  return result;
 }
 async function adminDeleteProduct(dbId){
   var session=getAdminSession();
@@ -665,7 +690,7 @@ function openInfo(k){
 }
 
 /* ---------- admin ---------- */
-var admOpen=false,admTab='produtos',admAuth=false,editing=null;
+var admOpen=false,admTab='produtos',admAuth=false,editing=null,adminRole='manager';
 function hash(s){var h1=0xdeadbeef,h2=0x41c6ce57;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)}
 var ADMIN_SESSION_KEY='ist.supabase.admin.session.v1';
 var SUPABASE_URL='https://bqueamblmrvudaescrtb.supabase.co';
@@ -677,7 +702,10 @@ async function verifyAdminSession(session){
   if(!session||!session.access_token)return false;
   try{
     var response=await fetch(API_BASE+'/api/admin/me',{headers:{'Authorization':'Bearer '+session.access_token,'Accept':'application/json'}});
-    return response.ok;
+    var data=await response.json().catch(function(){return {}});
+    if(!response.ok)return false;
+    adminRole=data.admin&&data.admin.role==='admin'?'admin':'manager';
+    return true;
   }catch(e){return false}
 }
 async function signInAdmin(email,password){
@@ -725,9 +753,14 @@ function renderAdm(){
     P.innerHTML='<button class="x" data-admclose aria-label="Fechar">✕</button><div style="padding:2.4rem 1.6rem;max-width:420px;margin:0 auto"><h3 style="font-size:1.5rem;margin-bottom:.6rem">Acesso administrativo</h3><p class="note" style="margin-bottom:1rem">Entre com sua conta autorizada no Supabase.</p><form id="loginForm">'+fld('a_email','E-mail','ghinestroza813@gmail.com','type="email" autocomplete="username" required')+fld('a_pass','Senha do Supabase','','type="password" autocomplete="current-password" required')+'<div class="err" id="aerr"></div><button class="btn block" type="submit">Entrar com segurança</button></form></div>';
     return;
   }
-  var tabs=[['produtos','Produtos'],['depoimentos','Depoimentos'],['pedidos','Pedidos'],['config','Configurações']];
+  var tabs=[['produtos','Produtos'],['aprovacoes','Aprovações'],['depoimentos','Depoimentos'],['pedidos','Pedidos'],['config','Configurações']];
   var body='';
   if(admTab==='produtos')body=editing?prodForm():'<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><h3 style="margin:0">Produtos ('+S.products.length+')</h3><button class="btn sm" data-newprod>+ Novo produto</button></div>'+S.products.map(function(p){return '<div class="arow"><img alt="" src="'+esc(imgs(p)[0])+'"><div><b>'+esc(p.name)+'</b><small>'+esc(p.brand)+' · '+esc(p.cat)+' · '+brl(p.price)+(p.stock!==undefined&&p.stock!==''&&p.stock!==null?' · estoque '+esc(p.stock):'')+'</small></div><button class="btn ghost sm" data-editprod="'+esc(p.id)+'">Editar</button><button class="btn ghost sm" data-delprod="'+esc(p.id)+'">Remover</button></div>'}).join('');
+  if(admTab==='aprovacoes'){
+    var pending=S.products.filter(function(p){return p.needsReview&&!p.isActive});
+    body='<h3>Produtos aguardando aprovação ('+pending.length+')</h3><p class="note">Os colaboradores podem editar produtos pendentes. Somente o proprietário pode aprovar ou rejeitar.</p>'+
+      (pending.map(function(p){return '<div class="arow"><img alt="" src="'+esc(imgs(p)[0])+'"><div><b>'+esc(p.name)+'</b><small>'+esc(p.brand)+' · '+esc(p.cat)+' · '+brl(p.price)+' · SKU '+esc(p.sku||'—')+'</small></div><button class="btn ghost sm" data-editprod="'+esc(p.id)+'">Conferir / editar</button>'+(adminRole==='admin'?'<button class="btn sm" data-review="approve" data-review-id="'+esc(p.dbId)+'">Aprovar</button><button class="btn ghost sm" data-review="reject" data-review-id="'+esc(p.dbId)+'">Rejeitar</button>':'<small>Aguardando proprietário</small>')+'</div>'}).join('')||'<div class="empty">Nenhum produto aguardando aprovação.</div>');
+  }
   if(admTab==='depoimentos')body='<h3>Depoimentos</h3><p class="note" style="margin-bottom:1rem">A seção só aparece no site quando houver ao menos um depoimento cadastrado.</p><form id="tmForm">'+fld('t_name','Nome do atleta','')+fld('t_role','Detalhe (opcional, ex.: cidade ou categoria)','')+'<div class="fld"><label for="t_text">Depoimento</label><textarea id="t_text" rows="3"></textarea></div><button class="btn sm" type="submit">Adicionar depoimento</button></form><div style="margin-top:1.4rem">'+(S.testimonials.map(function(t,i){return '<div class="arow"><div><b>'+esc(t.name)+'</b><small>'+esc(t.text)+'</small></div><button class="btn ghost sm" data-deltm="'+i+'">Remover</button></div>'}).join('')||'<div class="empty">Nenhum depoimento cadastrado.</div>')+'</div>';
   if(admTab==='pedidos'){var os=(S.cloudOrders&&canW)?S.cloudOrders:S.orders;body='<h3>Pedidos recebidos ('+os.length+')</h3><p class="note" style="margin-bottom:1rem">'+(canW?'Pedidos feitos por clientes com acesso à conta, mais os deste navegador.':'Mostrando os pedidos feitos neste navegador. Todo pedido também chega ao WhatsApp da loja.')+'</p>'+(os.map(function(o){return '<details><summary style="font-size:1rem"><span>'+esc(o.number)+' · '+esc(o.contact.name)+' · '+brl(o.total)+'</span></summary><p style="white-space:pre-line;font-size:.9rem">'+esc(orderText(o))+'\n\nData: '+new Date(o.createdAt).toLocaleString('pt-BR')+'</p></details>'}).join('')||'<div class="empty">Nenhum pedido ainda.</div>')}
   if(admTab==='config'){var s=S.settings,pg=s.pages||{};body='<h3>Configurações</h3><form id="cfgForm"><div class="row2">'+fld('s_wa','WhatsApp da loja (com DDI)',s.whatsapp)+fld('s_email','E-mail da loja (opcional)',s.email)+'</div><div class="row2">'+fld('s_tax','Alíquota estimada de impostos (%)',s.taxRate,'inputmode="decimal"')+fld('s_cnpj','CNPJ',s.cnpj)+'</div><div class="row2">'+fld('s_eco','Frete econômico (R$)',s.shipEco,'inputmode="decimal"')+fld('s_exp','Frete expresso (R$)',s.shipExp,'inputmode="decimal"')+'</div>'+fld('s_ig','Link do Instagram (aparece no rodapé quando preenchido)',s.instagram)+'<div class="fld"><label>Foto do hero (opcional)</label><input type="file" id="s_hero" accept="image/*"></div>'+(s.heroImg?'<div class="photos"><div><img alt="" src="'+esc(s.heroImg)+'"><button type="button" data-rmhero>×</button></div></div>':'')+'<h4 style="margin:1rem 0 .6rem">Bloco “Por que comprar conosco?”</h4>'+fld('s_wl','Título do bloco destacado',s.whyLead)+'<div class="fld"><label for="s_wt">Texto do bloco destacado</label><textarea id="s_wt" rows="3">'+esc(s.whyText)+'</textarea></div>'+s.why.map(function(c,i){return '<div class="row2">'+fld('s_wc'+i+'t','Card '+(i+1)+' · título',c.t)+fld('s_wc'+i+'d','Card '+(i+1)+' · texto',c.d)+'</div>'}).join('')+'<h4 style="margin:1rem 0 .6rem">Páginas institucionais</h4>'+[['sobre','Sobre nós'],['importacao','Importação direta'],['envio','Política de envio'],['trocas','Trocas e devoluções']].map(function(a){return '<div class="fld"><label for="s_pg_'+a[0]+'">'+a[1]+'</label><textarea id="s_pg_'+a[0]+'" rows="2">'+esc(pg[a[0]]||'')+'</textarea></div>'}).join('')+'<button class="btn" type="submit">Salvar configurações</button></form><h4 style="margin:2rem 0 .6rem">Trocar senha</h4><form id="pwForm" style="max-width:340px">'+fld('s_pw','Nova senha','','type="password" autocomplete="new-password"')+'<button class="btn ghost sm" type="submit">Atualizar senha</button></form>'}
@@ -736,7 +769,8 @@ function renderAdm(){
 var draftImgs=[];
 function prodForm(){
   var p=editing,isNew=!find(p.id);
-  return '<h3>'+(isNew?'Novo produto':'Editar produto')+'</h3><form id="pForm"><div class="row2">'+fld('f_name','Nome',p.name)+fld('f_brand','Marca',p.brand)+'</div><div class="row2"><div class="fld"><label for="f_cat">Categoria</label><select id="f_cat">'+CATS.map(function(c){return '<option'+(p.cat===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></div>'+fld('f_badge','Selo do card',p.badge||'')+'</div><div class="row2">'+fld('f_price','Preço (R$)',p.price,'inputmode="decimal"')+fld('f_old','Preço riscado (opcional)',p.oldPrice||'','inputmode="decimal"')+'</div><div class="row2">'+fld('f_stock','Estoque (vazio = sem controle)',p.stock===undefined||p.stock===null?'':p.stock,'inputmode="numeric"')+fld('f_inst','Parcelas máximas',p.installments||12,'inputmode="numeric"')+'</div>'+fld('f_sizes','Tamanhos (separados por vírgula; vazio se não houver)',(p.sizes||[]).join(', '))+fld('f_image_url','URL da imagem (https://...)',p.image_url||(p.images&&p.images[0])||'')+'<div class="fld"><label for="f_desc">Descrição</label><textarea id="f_desc" rows="3">'+esc(p.desc||'')+'</textarea></div><label class="chk"><input type="checkbox" id="f_best"'+(p.best?' checked':'')+'> Mostrar em “Mais vendidos”</label><label class="chk"><input type="checkbox" id="f_active"'+(p.isActive?' checked':'')+'> Publicar na loja</label><label class="chk"><input type="checkbox" id="f_review"'+(p.needsReview!==false?' checked':'')+'> Marcar para revisão</label><p class="note" style="margin:1rem 0">Para imagens, informe um endereço HTTPS público. Produtos novos ficam fora da loja até você marcar “Publicar na loja”.</p><div style="display:flex;gap:.6rem;flex-wrap:wrap"><button class="btn" type="submit">Salvar produto</button><button class="btn ghost" type="button" data-cancelprod>Cancelar</button></div></form>';
+  var existingImages=(p.images||[]).filter(function(x){return /^https:\/\//i.test(x)});
+  return '<h3>'+(isNew?'Novo produto':'Editar produto')+'</h3><form id="pForm"><div class="row2">'+fld('f_name','Nome do produto',p.name)+fld('f_brand','Marca',p.brand)+'</div><div class="row2"><div class="fld"><label for="f_cat">Categoria</label><select id="f_cat">'+CATS.map(function(c){return '<option'+(p.cat===c?' selected':'')+'>'+c+'</option>'}).join('')+'</select></div>'+fld('f_sku','Código / SKU',p.sku||'')+'</div><div class="row2">'+fld('f_price','Preço (R$)',p.price,'inputmode="decimal"')+fld('f_old','Preço promocional (opcional)',p.oldPrice||'','inputmode="decimal"')+'</div><div class="row2">'+fld('f_stock','Estoque',p.stock==null?'':p.stock,'inputmode="numeric"')+fld('f_inst','Parcelas máximas',p.installments||12,'inputmode="numeric"')+'</div>'+fld('f_sizes','Tamanhos (separados por vírgula)',(p.sizes||[]).join(', '))+(existingImages.length?'<p class="note">Imagens atuais</p><div class="photos">'+existingImages.map(function(src){return '<div><img alt="Imagem atual" src="'+esc(src)+'"></div>'}).join('')+'</div>':'')+'<div class="fld"><label for="f_files">Adicionar fotos (até 8 novas)</label><input id="f_files" type="file" accept="image/jpeg,image/png,image/webp" multiple><small>As imagens serão enviadas diretamente ao Supabase Storage.</small></div>'+(draftImgs.length?'<div class="photos">'+draftImgs.map(function(src,i){return '<div><img alt="Prévia '+(i+1)+'" src="'+esc(src)+'"><button type="button" data-rmimg="'+i+'">×</button></div>'}).join('')+'</div>':'')+fld('f_image_url','Ou URL HTTPS de imagem (opcional)',p.image_url||'')+'<div class="fld"><label for="f_desc">Descrição</label><textarea id="f_desc" rows="3">'+esc(p.desc||'')+'</textarea></div><p class="note" style="margin:1rem 0">Todo cadastro novo fica inativo até a aprovação do proprietário.</p><div style="display:flex;gap:.6rem;flex-wrap:wrap"><button class="btn" type="submit">'+(isNew?'Enviar para aprovação':'Salvar alterações')+'</button><button class="btn ghost" type="button" data-cancelprod>Cancelar</button></div></form>';
 }
 function shrink(file){
   return new Promise(function(res,rej){
@@ -779,9 +813,15 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-info]'))){openInfo(el.getAttribute('data-info'));return}
   if(t.closest('#bAdmin')){openAdmin();return}
   if(t.closest('[data-admclose]')){closeAdmin();return}
+  if((el=t.closest('[data-review]'))){
+    if(adminRole!=='admin'){toast('Somente o proprietário pode aprovar.');return}
+    var decision=el.getAttribute('data-review'),productId=el.getAttribute('data-review-id');
+    el.disabled=true;el.textContent=decision==='approve'?'Aprovando...':'Rejeitando...';
+    adminReviewProduct(productId,decision).then(async function(){await adminLoadProducts();renderAdm();renderAll();toast(decision==='approve'?'Produto aprovado e publicado!':'Produto rejeitado e mantido fora da loja.')}).catch(function(error){el.disabled=false;toast(error.message||'Falha na revisão.')});return;
+  }
   if((el=t.closest('[data-tab]'))){admTab=el.getAttribute('data-tab');editing=null;renderAdm();return}
-  if(t.closest('[data-newprod]')){editing={id:uid(),name:'',brand:'',cat:'Luvas',price:'',sizes:[],best:false,desc:''};draftImgs=[];renderAdm();return}
-  if((el=t.closest('[data-editprod]'))){editing=clone(find(el.getAttribute('data-editprod')));draftImgs=(editing.images||[]).slice();renderAdm();return}
+  if(t.closest('[data-newprod]')){editing={id:uid(),name:'',brand:'',sku:'',cat:'Luvas',price:'',sizes:[],images:[],best:false,desc:'',isActive:false,needsReview:true};draftImgs=[];renderAdm();return}
+  if((el=t.closest('[data-editprod]'))){editing=clone(find(el.getAttribute('data-editprod')));draftImgs=[];renderAdm();return}
   if(t.closest('[data-cancelprod]')){editing=null;renderAdm();return}
   if((el=t.closest('[data-rmimg]'))){draftImgs.splice(+el.getAttribute('data-rmimg'),1);keepDraft();renderAdm();return}
   if((el=t.closest('[data-delprod]'))){var id2=el.getAttribute('data-delprod'),pr=find(id2);
@@ -793,7 +833,7 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-deltm]'))){S.testimonials.splice(+el.getAttribute('data-deltm'),1);save();cfgPush();renderAll();return}
   if(t.closest('[data-rmhero]')){S.settings.heroImg='';save();cfgPush();renderAll();return}
 });
-function keepDraft(){if(editing){var g=function(id){var x=document.getElementById(id);return x?x.value:''};if(document.getElementById('f_name')){editing.name=g('f_name');editing.brand=g('f_brand');editing.cat=g('f_cat');editing.badge=g('f_badge');editing.price=g('f_price');editing.oldPrice=g('f_old');editing.stock=g('f_stock');editing.installments=g('f_inst');editing.sizes=g('f_sizes').split(',').map(function(s){return s.trim()}).filter(Boolean);editing.desc=g('f_desc');editing.image_url=g('f_image_url');editing.best=document.getElementById('f_best').checked;editing.isActive=document.getElementById('f_active').checked;editing.needsReview=document.getElementById('f_review').checked}}}
+function keepDraft(){if(editing){var g=function(id){var x=document.getElementById(id);return x?x.value:''};if(document.getElementById('f_name')){editing.name=g('f_name');editing.brand=g('f_brand');editing.sku=g('f_sku');editing.cat=g('f_cat');editing.badge=g('f_badge');editing.price=g('f_price');editing.oldPrice=g('f_old');editing.stock=g('f_stock');editing.installments=g('f_inst');editing.sizes=g('f_sizes').split(',').map(function(s){return s.trim()}).filter(Boolean);editing.desc=g('f_desc');editing.image_url=g('f_image_url')}}}
 document.addEventListener('submit',async function(e){
   var f=e.target.id;if(!f)return;e.preventDefault();
   if(f==='coForm'){grab();var er=validate();CO.err=er;if(er){$('#coerr').textContent=er;return}
@@ -814,9 +854,16 @@ document.addEventListener('submit',async function(e){
     if(imageUrl&&!/^https:\/\//i.test(imageUrl)){toast('A imagem precisa ter um endereço HTTPS público.');return}
     var slug=p.slug;
     if(!slug){slug=p.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,90)+'-'+Date.now().toString(36)}
-    var payload={slug:slug,name:p.name.trim(),description:(p.desc||'').trim(),brand:p.brand.trim(),category:p.cat,price:price,compare_at_price:old!=null&&old>0?old:null,image_url:imageUrl||null,images:imageUrl?[imageUrl]:[],sizes:p.sizes||[],is_active:!!p.isActive,needs_review:!!p.needsReview,is_featured:!!p.best,badge:(p.badge||'').trim()||null,stock:stock,installments:installments&&installments>0?Math.min(24,installments):12,sort_order:Number.isInteger(p.order)?p.order:S.products.length};
-    var saveButton=e.target.querySelector('button[type=submit]');saveButton.disabled=true;saveButton.textContent='Salvando...';
-    try{await adminSaveProduct(payload,p.dbId||null);await adminLoadProducts();editing=null;draftImgs=[];renderAdm();renderAll();toast('Produto salvo no Supabase.')}
+    var saveButton=e.target.querySelector('button[type=submit]');saveButton.disabled=true;saveButton.textContent='Enviando...';
+    var uploadedImages=[];
+    try{for(var di=0;di<draftImgs.length;di++){uploadedImages.push(await adminUploadProductImage(draftImgs[di]))}}
+    catch(uploadError){saveButton.disabled=false;saveButton.textContent='Tentar novamente';toast(uploadError.message||'Falha ao enviar as imagens.');return}
+    var finalImages=(p.images||[]).filter(function(x){return /^https:\/\//i.test(x)}).concat(uploadedImages);
+    if(imageUrl&&!finalImages.length)finalImages=[imageUrl];
+    if(uploadedImages.length&&!imageUrl)imageUrl=uploadedImages[0];
+    var payload={slug:slug,name:p.name.trim(),description:(p.desc||'').trim(),brand:p.brand.trim(),category:p.cat,price:price,compare_at_price:old!=null&&old>0?old:null,sku:(p.sku||'').trim()||null,image_url:imageUrl||finalImages[0]||null,images:finalImages,sizes:p.sizes||[],badge:(p.badge||'').trim()||null,stock:stock,installments:installments&&installments>0?Math.min(24,installments):12,sort_order:Number.isInteger(p.order)?p.order:S.products.length};
+    if(!p.dbId){payload.is_active=false;payload.needs_review=true;payload.is_featured=false;}
+    try{await adminSaveProduct(payload,p.dbId||null);await adminLoadProducts();editing=null;draftImgs=[];renderAdm();renderAll();toast(p.dbId?'Produto atualizado no Supabase.':'Produto enviado para aprovação no Supabase.')}
     catch(error){saveButton.disabled=false;saveButton.textContent='Salvar produto';toast(error.message||'Falha ao salvar produto.')}
     return}
   if(f==='tmForm'){var nm=$('#t_name').value.trim(),tx=$('#t_text').value.trim();if(!nm||!tx){toast('Informe o nome e o depoimento.');return}S.testimonials.push({name:nm,role:$('#t_role').value.trim(),text:tx});save();await cfgPush();renderAll();return}
