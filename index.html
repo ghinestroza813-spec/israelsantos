@@ -690,7 +690,7 @@ function openInfo(k){
 }
 
 /* ---------- admin ---------- */
-var admOpen=false,admTab='produtos',admAuth=false,editing=null;
+var admOpen=false,admTab='produtos',admAuth=false,editing=null,adminRole='manager';
 function hash(s){var h1=0xdeadbeef,h2=0x41c6ce57;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)}
 var ADMIN_SESSION_KEY='ist.supabase.admin.session.v1';
 var SUPABASE_URL='https://bqueamblmrvudaescrtb.supabase.co';
@@ -702,7 +702,10 @@ async function verifyAdminSession(session){
   if(!session||!session.access_token)return false;
   try{
     var response=await fetch(API_BASE+'/api/admin/me',{headers:{'Authorization':'Bearer '+session.access_token,'Accept':'application/json'}});
-    return response.ok;
+    var data=await response.json().catch(function(){return {}});
+    if(!response.ok)return false;
+    adminRole=data.admin&&data.admin.role==='admin'?'admin':'manager';
+    return true;
   }catch(e){return false}
 }
 async function signInAdmin(email,password){
@@ -750,9 +753,14 @@ function renderAdm(){
     P.innerHTML='<button class="x" data-admclose aria-label="Fechar">✕</button><div style="padding:2.4rem 1.6rem;max-width:420px;margin:0 auto"><h3 style="font-size:1.5rem;margin-bottom:.6rem">Acesso administrativo</h3><p class="note" style="margin-bottom:1rem">Entre com sua conta autorizada no Supabase.</p><form id="loginForm">'+fld('a_email','E-mail','ghinestroza813@gmail.com','type="email" autocomplete="username" required')+fld('a_pass','Senha do Supabase','','type="password" autocomplete="current-password" required')+'<div class="err" id="aerr"></div><button class="btn block" type="submit">Entrar com segurança</button></form></div>';
     return;
   }
-  var tabs=[['produtos','Produtos'],['depoimentos','Depoimentos'],['pedidos','Pedidos'],['config','Configurações']];
+  var tabs=[['produtos','Produtos'],['aprovacoes','Aprovações'],['depoimentos','Depoimentos'],['pedidos','Pedidos'],['config','Configurações']];
   var body='';
   if(admTab==='produtos')body=editing?prodForm():'<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem"><h3 style="margin:0">Produtos ('+S.products.length+')</h3><button class="btn sm" data-newprod>+ Novo produto</button></div>'+S.products.map(function(p){return '<div class="arow"><img alt="" src="'+esc(imgs(p)[0])+'"><div><b>'+esc(p.name)+'</b><small>'+esc(p.brand)+' · '+esc(p.cat)+' · '+brl(p.price)+(p.stock!==undefined&&p.stock!==''&&p.stock!==null?' · estoque '+esc(p.stock):'')+'</small></div><button class="btn ghost sm" data-editprod="'+esc(p.id)+'">Editar</button><button class="btn ghost sm" data-delprod="'+esc(p.id)+'">Remover</button></div>'}).join('');
+  if(admTab==='aprovacoes'){
+    var pending=S.products.filter(function(p){return p.needsReview&&!p.isActive});
+    body='<h3>Produtos aguardando aprovação ('+pending.length+')</h3><p class="note">Os colaboradores podem editar produtos pendentes. Somente o proprietário pode aprovar ou rejeitar.</p>'+
+      (pending.map(function(p){return '<div class="arow"><img alt="" src="'+esc(imgs(p)[0])+'"><div><b>'+esc(p.name)+'</b><small>'+esc(p.brand)+' · '+esc(p.cat)+' · '+brl(p.price)+' · SKU '+esc(p.sku||'—')+'</small></div><button class="btn ghost sm" data-editprod="'+esc(p.id)+'">Conferir / editar</button>'+(adminRole==='admin'?'<button class="btn sm" data-review="approve" data-review-id="'+esc(p.dbId)+'">Aprovar</button><button class="btn ghost sm" data-review="reject" data-review-id="'+esc(p.dbId)+'">Rejeitar</button>':'<small>Aguardando proprietário</small>')+'</div>'}).join('')||'<div class="empty">Nenhum produto aguardando aprovação.</div>');
+  }
   if(admTab==='depoimentos')body='<h3>Depoimentos</h3><p class="note" style="margin-bottom:1rem">A seção só aparece no site quando houver ao menos um depoimento cadastrado.</p><form id="tmForm">'+fld('t_name','Nome do atleta','')+fld('t_role','Detalhe (opcional, ex.: cidade ou categoria)','')+'<div class="fld"><label for="t_text">Depoimento</label><textarea id="t_text" rows="3"></textarea></div><button class="btn sm" type="submit">Adicionar depoimento</button></form><div style="margin-top:1.4rem">'+(S.testimonials.map(function(t,i){return '<div class="arow"><div><b>'+esc(t.name)+'</b><small>'+esc(t.text)+'</small></div><button class="btn ghost sm" data-deltm="'+i+'">Remover</button></div>'}).join('')||'<div class="empty">Nenhum depoimento cadastrado.</div>')+'</div>';
   if(admTab==='pedidos'){var os=(S.cloudOrders&&canW)?S.cloudOrders:S.orders;body='<h3>Pedidos recebidos ('+os.length+')</h3><p class="note" style="margin-bottom:1rem">'+(canW?'Pedidos feitos por clientes com acesso à conta, mais os deste navegador.':'Mostrando os pedidos feitos neste navegador. Todo pedido também chega ao WhatsApp da loja.')+'</p>'+(os.map(function(o){return '<details><summary style="font-size:1rem"><span>'+esc(o.number)+' · '+esc(o.contact.name)+' · '+brl(o.total)+'</span></summary><p style="white-space:pre-line;font-size:.9rem">'+esc(orderText(o))+'\n\nData: '+new Date(o.createdAt).toLocaleString('pt-BR')+'</p></details>'}).join('')||'<div class="empty">Nenhum pedido ainda.</div>')}
   if(admTab==='config'){var s=S.settings,pg=s.pages||{};body='<h3>Configurações</h3><form id="cfgForm"><div class="row2">'+fld('s_wa','WhatsApp da loja (com DDI)',s.whatsapp)+fld('s_email','E-mail da loja (opcional)',s.email)+'</div><div class="row2">'+fld('s_tax','Alíquota estimada de impostos (%)',s.taxRate,'inputmode="decimal"')+fld('s_cnpj','CNPJ',s.cnpj)+'</div><div class="row2">'+fld('s_eco','Frete econômico (R$)',s.shipEco,'inputmode="decimal"')+fld('s_exp','Frete expresso (R$)',s.shipExp,'inputmode="decimal"')+'</div>'+fld('s_ig','Link do Instagram (aparece no rodapé quando preenchido)',s.instagram)+'<div class="fld"><label>Foto do hero (opcional)</label><input type="file" id="s_hero" accept="image/*"></div>'+(s.heroImg?'<div class="photos"><div><img alt="" src="'+esc(s.heroImg)+'"><button type="button" data-rmhero>×</button></div></div>':'')+'<h4 style="margin:1rem 0 .6rem">Bloco “Por que comprar conosco?”</h4>'+fld('s_wl','Título do bloco destacado',s.whyLead)+'<div class="fld"><label for="s_wt">Texto do bloco destacado</label><textarea id="s_wt" rows="3">'+esc(s.whyText)+'</textarea></div>'+s.why.map(function(c,i){return '<div class="row2">'+fld('s_wc'+i+'t','Card '+(i+1)+' · título',c.t)+fld('s_wc'+i+'d','Card '+(i+1)+' · texto',c.d)+'</div>'}).join('')+'<h4 style="margin:1rem 0 .6rem">Páginas institucionais</h4>'+[['sobre','Sobre nós'],['importacao','Importação direta'],['envio','Política de envio'],['trocas','Trocas e devoluções']].map(function(a){return '<div class="fld"><label for="s_pg_'+a[0]+'">'+a[1]+'</label><textarea id="s_pg_'+a[0]+'" rows="2">'+esc(pg[a[0]]||'')+'</textarea></div>'}).join('')+'<button class="btn" type="submit">Salvar configurações</button></form><h4 style="margin:2rem 0 .6rem">Trocar senha</h4><form id="pwForm" style="max-width:340px">'+fld('s_pw','Nova senha','','type="password" autocomplete="new-password"')+'<button class="btn ghost sm" type="submit">Atualizar senha</button></form>'}
@@ -804,6 +812,12 @@ document.addEventListener('click',function(e){
   if((el=t.closest('[data-info]'))){openInfo(el.getAttribute('data-info'));return}
   if(t.closest('#bAdmin')){openAdmin();return}
   if(t.closest('[data-admclose]')){closeAdmin();return}
+  if((el=t.closest('[data-review]'))){
+    if(adminRole!=='admin'){toast('Somente o proprietário pode aprovar.');return}
+    var decision=el.getAttribute('data-review'),productId=el.getAttribute('data-review-id');
+    el.disabled=true;el.textContent=decision==='approve'?'Aprovando...':'Rejeitando...';
+    adminReviewProduct(productId,decision).then(async function(){await adminLoadProducts();renderAdm();renderAll();toast(decision==='approve'?'Produto aprovado e publicado!':'Produto rejeitado e mantido fora da loja.')}).catch(function(error){el.disabled=false;toast(error.message||'Falha na revisão.')});return;
+  }
   if((el=t.closest('[data-tab]'))){admTab=el.getAttribute('data-tab');editing=null;renderAdm();return}
   if(t.closest('[data-newprod]')){editing={id:uid(),name:'',brand:'',cat:'Luvas',price:'',sizes:[],best:false,desc:''};draftImgs=[];renderAdm();return}
   if((el=t.closest('[data-editprod]'))){editing=clone(find(el.getAttribute('data-editprod')));draftImgs=(editing.images||[]).slice();renderAdm();return}
