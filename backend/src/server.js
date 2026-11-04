@@ -357,7 +357,7 @@ app.post("/api/admin/products/:id/review", requireSupabase, requireAdmin, requir
       is_active: approved, needs_review: false, reviewed_by: req.admin.id,
       reviewed_at: new Date().toISOString(), review_notes: parsed.data.review_notes
     }).eq("id", req.params.id).eq("is_active", false).eq("needs_review", true)
-      .select("id, slug, name, is_active, needs_review, reviewed_at").maybeSingle();
+      .select("id, slug, name, sku, brand, category, price, stock, image_url, is_active, needs_review, reviewed_at, reviewed_by").maybeSingle();
     if (error) throw error;
     if (!data) return res.status(409).json({ error: "Product is not pending review; no changes made." });
     await recordProductActivity(data.id, req.admin.id, approved ? "approved" : "rejected", { notes: parsed.data.review_notes });
@@ -392,11 +392,13 @@ app.post("/api/admin/products", requireSupabase, requireAdmin, async (req, res) 
   try {
     const { data, error } = await supabase.from("products").insert({
       ...parsed.data, is_active: false, needs_review: true, is_featured: false, created_by: req.admin.id
-    }).select("id, slug, name, price, is_active, needs_review, created_by").single();
+    }).select("id, slug, name, price, sku, brand, category, stock, image_url, is_active, needs_review, created_by").single();
     if (error) {
       if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." });
       throw error;
     }
+    await recordProductActivity(data.id, req.admin.id, "created", { source: "site_admin" });
+    void syncProductReport(data, "created");
     return res.status(201).json({ product: data, status: "pending_approval" });
   } catch (error) {
     console.error("Product submission failed:", error.message);
@@ -417,7 +419,7 @@ app.patch("/api/admin/products/:id", requireSupabase, requireAdmin, async (req, 
     const safeUpdate = { ...parsed.data };
     if (req.admin.role !== "admin") { delete safeUpdate.is_active; delete safeUpdate.needs_review; delete safeUpdate.is_featured; }
     const { data, error } = await supabase.from("products").update(safeUpdate).eq("id", req.params.id)
-      .select("id,slug,name,price,is_active,needs_review").maybeSingle();
+      .select("id,slug,name,sku,brand,category,price,stock,image_url,is_active,needs_review,created_by").maybeSingle();
     if (error) { if (error.code === "23505") return res.status(409).json({ error: "Slug or SKU already exists." }); throw error; }
     await recordProductActivity(data.id, req.admin.id, "updated", { source: "site_admin" });
     void syncProductReport(data, "updated");
