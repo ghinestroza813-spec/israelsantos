@@ -24,7 +24,19 @@ const supabase = supabaseConfigured
 app.disable("x-powered-by");
 // Render runs the app behind one trusted reverse proxy.
 app.set("trust proxy", 1);
-app.use(helmet());
+// Browser authentication connects directly to this configured Supabase origin.
+// All other Helmet CSP defaults remain enabled.
+const authOrigin = (() => {
+  try { return supabaseUrl ? new URL(supabaseUrl).origin : null; }
+  catch { return null; }
+})();
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      "connect-src": ["'self'", ...(authOrigin ? [authOrigin] : [])]
+    }
+  }
+}));
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin) ||
