@@ -395,6 +395,83 @@ app.get("/api/admin/products", requireSupabase, requireAdmin, async (_req, res) 
   }
 });
 
+// Stage 5A: inventory is tracked by variant; legacy products.stock is not rewritten.
+const inventoryMovementInput = z.object({
+  movement_type: z.enum(["purchase", "sale", "adjustment", "return", "loss"]),
+  quantity_delta: z.number().int().refine((value) => value !== 0, "Quantity must not be zero"),
+  reason: z.string().trim().min(1).max(500),
+  reference: z.string().trim().max(120).optional().nullable(),
+  idempotency_key: z.string().uuid()
+}).strict();
+
+// Read-only: show both variant stock and legacy product stock separately.
+// Never sum these values, because legacy units may not yet be allocated to sizes.
+app.get("/api/admin/products/:id/variants", requireSupabase, requireAdmin, async (req, res) => {
+  const productId = z.string().uuid().safeParse(req.params.id);
+  if (!productId.success) return res.status(400).json({ error: "Invalid product ID." });
+  try {
+    const { data: product, error: productError } = await supabase.from("products")
+      .select("id,name,sku,stock,sizes,is_active").eq("id", productId.data).maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found." });
+    const { data: variants, error } = await supabase.from("product_variants")
+      .select("id,product_id,sku,size,color,label,price_override,stock,reserved_quantity,is_active,updated_at")
+      .eq("product_id", productId.data).order("size", { ascending: true });
+    if (error) throw error;
+    return res.json({ product, variants: variants || [], legacy_stock_unallocated: product.stock });
+  } catch (error) {
+    console.error("Variant listing failed:", error.message);
+    return res.status(503).json({ error: "Could not load product variants." });
+  }
+});
+
+// Audit history is visible to authenticated store administrators only.
+app.get("/api/admin/products/:id/inventory-movements", requireSupabase, requireAdmin, async (req, res) => {
+  const productId = z.string().uuid().safeParse(req.params.id);
+  if (!productId.success) return res.status(400).json({ error: "Invalid product ID." });
+  try {
+    const { data, error } = await supabase.from("inventory_movements")
+      .select("id,product_id,variant_id,movement_type,quantity_delta,stock_before,stock_after,reason,reference,created_at")
+      .eq("product_id", productId.data).order("created_at", { ascending: false }).limit(100);
+    if (error) throw error;
+    return res.json({ movements: data || [] });
+  } catch (error) {
+    console.error("Inventory history query failed:", error.message);
+    return res.status(503).json({ error: "Could not load inventory history." });
+  }
+});
+
+// Only the owner may move stock. Atomic stock update and audit log happen in
+// the existing Supabase RPC, not in two separate HTTP/database operations.
+app.post("/api/admin/variants/:id/movements", requireSupabase, requireAdmin, requireOwner, async (req, res) => {
+  const variantId = z.string().uuid().safeParse(req.params.id);
+  const parsed = inventoryMovementInput.safeParse(req.body);
+  if (!variantId.success || !parsed.success) {
+    return res.status(400).json({ error: "Invalid inventory movement.", details: parsed.success ? undefined : parsed.error.flatten() });
+  }
+  try {
+    const { data, error } = await supabase.rpc("apply_inventory_movement", {
+      p_variant_id: variantId.data,
+      p_movement_type: parsed.data.movement_type,
+      p_quantity_delta: parsed.data.quantity_delta,
+      p_reason: parsed.data.reason,
+      p_reference: parsed.data.reference || null,
+      p_idempotency_key: parsed.data.idempotency_key,
+      p_actor_user_id: req.admin.id
+    });
+    if (error) {
+      if (["23514", "P0002", "22023", "23505"].includes(error.code)) {
+        return res.status(409).json({ error: "Movement rejected. Check stock, variant and idempotency key." });
+      }
+      throw error;
+    }
+    return res.status(200).json({ movement: data?.[0] || null });
+  } catch (error) {
+    console.error("Inventory movement failed:", error.message);
+    return res.status(503).json({ error: "Could not apply inventory movement." });
+  }
+});
+
 // First protected catalog write endpoint. Payment/order endpoints will be added separately.
 app.post("/api/admin/products", requireSupabase, requireAdmin, async (req, res) => {
   const parsed = productInput.safeParse(req.body);
