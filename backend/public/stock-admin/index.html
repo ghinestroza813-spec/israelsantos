@@ -1,10 +1,7 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Estoque | Israel Santos Thaishop</title>
-<style>
-:root{font-family:system-ui,Arial,sans-serif;color-scheme:dark;background:#101310;color:#f5f8f5}
-*{box-sizing:border-box}body{max-width:1080px;margin:0 auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}h1{font-size:1.5rem}h2{font-size:1.1rem}section{background:#1b211c;border:1px solid #394639;border-radius:12px;padding:18px;margin-top:18px}input,select,button{font:inherit;border-radius:7px;padding:11px;background:#101610;color:white;border:1px solid #566a56}button{cursor:pointer;background:#315e39;border-color:#51825a}button:disabled{opacity:.5;cursor:wait}label{display:block;margin:12px 0 5px}form{max-width:520px}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border-bottom:1px solid #394639;padding:10px;text-align:left}small,.muted{color:#b2c1b3}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.row>*{flex:1}#notice{min-height:1.5em}a{color:#a4e6a9}.scroll{overflow:auto}[hidden]{display:none!important}
-</style></head><body>
+<link rel="stylesheet" href="/stock-admin/style.css"></head><body>
 <header><div><h1>Israel Santos Thaishop</h1><small>Console de estoque por variação · Etapa 5A</small></div><button id="logout" hidden>Sair</button></header>
 <p id="notice" role="status" aria-live="polite"></p>
 <section id="loginSection"><h2>Acesso administrativo seguro</h2><p class="muted">Use o e-mail e a senha da sua conta administrativa do Supabase Auth. A senha antiga do painel da loja não funciona aqui.</p><form id="login"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required><p><button type="submit">Entrar</button></p></form></section>
