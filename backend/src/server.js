@@ -449,6 +449,12 @@ app.post("/api/admin/variants/:id/movements", requireSupabase, requireAdmin, req
   if (!variantId.success || !parsed.success) {
     return res.status(400).json({ error: "Invalid inventory movement.", details: parsed.success ? undefined : parsed.error.flatten() });
   }
+  const delta = parsed.data.quantity_delta;
+  const type = parsed.data.movement_type;
+  if ((["sale", "loss"].includes(type) && delta >= 0) ||
+      (["purchase", "return"].includes(type) && delta <= 0)) {
+    return res.status(400).json({ error: "Movement quantity sign does not match movement type." });
+  }
   try {
     const { data, error } = await supabase.rpc("apply_inventory_movement", {
       p_variant_id: variantId.data,
