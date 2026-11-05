@@ -14,9 +14,16 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseConfigured = Boolean(supabaseUrl && supabaseSecretKey);
 const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseSecretKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null;
+// Verify end-user JWTs with the public Auth client; reserve the secret key for server-side database operations.
+const supabaseAuth = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     })
   : null;
@@ -77,8 +84,14 @@ async function requireAdmin(req, res, next) {
       : null;
     if (!token) return res.status(401).json({ error: "Authentication required." });
 
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !authData.user) {
+    if (!supabaseAuth) return res.status(503).json({ error: "Authentication configuration missing." });
+    const { data: authData, error: authError } = await supabaseAuth.auth.getUser(token);
+    if (authError || !authData?.user) {
+      // Log only the diagnostic code/status, never the JWT or other session credentials.
+      console.error("Admin token verification failed:", {
+        code: authError?.code || "no_user",
+        status: authError?.status || null
+      });
       return res.status(401).json({ error: "Invalid or expired session." });
     }
 
