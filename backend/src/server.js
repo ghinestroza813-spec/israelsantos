@@ -478,6 +478,84 @@ app.post("/api/admin/products/:id/variants", requireSupabase, requireAdmin, requ
   }
 });
 
+// Stage 5B: generate a bounded set of inactive size/color combinations.
+// One database INSERT is used for the batch; unique SKU violations reject the whole operation.
+const batchVariantInput = z.object({
+  sku_prefix: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  sizes: z.array(z.string().trim().min(1).max(40)).min(1).max(30),
+  colors: z.array(z.string().trim().min(1).max(60)).min(1).max(30),
+  price_override: z.number().finite().nonnegative().optional().nullable()
+}).strict();
+
+function variantSkuPart(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+app.post("/api/admin/products/:id/variants/batch", requireSupabase, requireAdmin, requireOwner, async (req, res) => {
+  const productId = z.string().uuid().safeParse(req.params.id);
+  const parsed = batchVariantInput.safeParse(req.body);
+  if (!productId.success || !parsed.success) {
+    return res.status(400).json({
+      error: "Invalid batch variant data.",
+      details: parsed.success ? undefined : parsed.error.flatten()
+    });
+  }
+  const { sizes, colors, sku_prefix, price_override } = parsed.data;
+  if (sizes.length * colors.length > 30) {
+    return res.status(400).json({ error: "A batch may contain at most 30 combinations." });
+  }
+  const normalizedSizes = sizes.map(variantSkuPart);
+  const normalizedColors = colors.map(variantSkuPart);
+  if (normalizedSizes.some((s) => !s) || normalizedColors.some((c) => !c) ||
+      new Set(normalizedSizes).size !== sizes.length ||
+      new Set(normalizedColors).size !== colors.length) {
+    return res.status(400).json({ error: "Sizes and colors must be distinct and generate nonempty SKU parts." });
+  }
+  const rows = sizes.flatMap((size, i) => colors.map((color, j) => ({
+    product_id: productId.data,
+    sku: `${sku_prefix.toUpperCase()}-${normalizedSizes[i]}-${normalizedColors[j]}`,
+    size, color,
+    label: `${size} / ${color}`,
+    price_override: price_override ?? null,
+    stock: 0,
+    reserved_quantity: 0,
+    is_active: false
+  })));
+  if (rows.some((row) => row.sku.length > 80 || row.label.length > 120) ||
+      new Set(rows.map((row) => row.sku)).size !== rows.length) {
+    return res.status(400).json({ error: "Generated SKUs or labels exceed limits or collide." });
+  }
+  try {
+    const { data: product, error: productError } = await supabase.from("products")
+      .select("id").eq("id", productId.data).maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found." });
+
+    // Reject duplicate size/color combinations for this product before writing.
+    const { data: existing, error: existingError } = await supabase.from("product_variants")
+      .select("size,color").eq("product_id", productId.data);
+    if (existingError) throw existingError;
+    const key = (size, color) => JSON.stringify([size?.trim().toLowerCase(), color?.trim().toLowerCase()]);
+    const existingKeys = new Set((existing || []).map((v) => key(v.size, v.color)));
+    if (rows.some((row) => existingKeys.has(key(row.size, row.color)))) {
+      return res.status(409).json({ error: "At least one size/color combination already exists for this product." });
+    }
+
+    const { data: variants, error } = await supabase.from("product_variants")
+      .insert(rows)
+      .select("id,product_id,sku,size,color,label,price_override,stock,reserved_quantity,is_active");
+    if (error) {
+      if (error.code === "23505") return res.status(409).json({ error: "One or more SKUs already exist; no batch was created." });
+      throw error;
+    }
+    return res.status(201).json({ count: variants.length, variants });
+  } catch (error) {
+    console.error("Batch variant creation failed:", error.message);
+    return res.status(503).json({ error: "Could not create variant batch." });
+  }
+});
+
 // Stage 5A: inventory is tracked by variant; legacy products.stock is not rewritten.
 const inventoryMovementInput = z.object({
   movement_type: z.enum(["purchase", "sale", "adjustment", "return", "loss"]),
