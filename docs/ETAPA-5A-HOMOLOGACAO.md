@@ -27,3 +27,31 @@ O novo painel está em `/stock-admin/` no **backend**, não no HTML legado da lo
 - Não existe ainda sincronização de checkout/pedidos com estoque por variação. **Não tratar a nova tabela como estoque de venda em produção até implementar reserva e baixa transacional.**
 - Os 8 produtos com estoque original ainda não alocado precisam de conferência manual por tamanho.
 - Este PR é um rascunho; exige homologação antes de merge/deploy.
+
+
+## Registro de homologação — 6 e 7 de novembro de 2026
+
+**Escopo:** ambiente Render `israelsantos-homologacao`, projeto Supabase `israelsantos-homologacao`, branch `feature/etapa-5a-estoque-variacoes`. Não houve merge para `main` neste registro.
+
+**Variação de teste isolada:** produto Caneleira Top King Couro Profissional; SKU `TESTE-TOPKING-001`; variação inativa, identificada como “TESTE - Não comercializar”. Estoque e reservado ao fim dos testes: **0 / 0**.
+
+### Evidências e resultados observados
+
+- Entrada de +1 e saída de -1 registradas com valores antes/depois; tentativa de saída com estoque 0 rejeitada.
+- Teste de concorrência/idempotência: duas requisições simultâneas de entrada +1 com a **mesma chave** retornaram HTTP 200; primeira com `replayed=false`, segunda com `replayed=true`, mesmo `movement_id`; estoque 0 → 1, sem duplicação. Entrada compensada posteriormente com saída -1.
+- Teste de duas vendas simultâneas com **chaves diferentes** e estoque inicial 1: uma requisição HTTP 200 (1 → 0) e outra HTTP 409; estoque final 0, sem saldo negativo.
+- Painel exibiu **seis registros de auditoria** referentes às entradas e saídas dos testes, e estoque disponível/reservado **0 / 0**.
+- `GET /api/admin/me` sem token retornou HTTP 401; `POST /api/admin/variants/:id/movements` sem token retornou HTTP 401.
+- A função `public.apply_inventory_movement` foi verificada com EXECUTE para `postgres` e `service_role`, sem EXECUTE para `anon` ou `authenticated` na consulta de privilégios.
+- Foram revogadas em homologação as permissões `TRUNCATE`, `TRIGGER` e `REFERENCES` de `anon` e `authenticated` nas tabelas `public.product_variants` e `public.inventory_movements`. Consulta posterior de privilégios não retornou concessões diretas para esses papéis.
+- RLS habilitado nas duas tabelas (`relrowsecurity=true`; `relforcerowsecurity=false`). Política pública de variantes exige simultaneamente `product_variants.is_active=true` e `products.is_active=true`.
+- A função `public.is_admin()` mantém a verificação `public.admin_users.user_id = auth.uid()`, é `SECURITY DEFINER` e teve `search_path` ajustado para vazio em homologação. Foi revogado EXECUTE de `PUBLIC`, mantendo concessões para `authenticated` e `service_role`. Verificação efetiva: `anon=false`, `authenticated=true`, `service_role=true`.
+- Após esses ajustes, o painel continuou exibindo a variação de teste com estoque 0 / reservado 0 e os seis registros de histórico.
+- Foi conferido manualmente que a variável `SUPABASE_URL` do serviço Render de homologação corresponde ao projeto Supabase de homologação.
+
+### Pendências antes de produção
+
+- Estes são **testes funcionais e verificações pontuais**, não uma auditoria integral de segurança. Validar os demais cenários da lista de aceitação acima (incluindo usuário não administrador, colaborador, CSP/mobile, catálogo e Google Sheets), além de revisar políticas, privilégios e configuração de implantação como um todo.
+- Revisar a divergência entre `main` e a branch da Etapa 5A antes de qualquer merge; preservar os oito produtos originais e todas as integrações existentes.
+- Implementar e testar checkout, pedidos, reserva e baixa transacional por variação antes de usar esse estoque para vendas reais.
+- Não ativar a variação de teste nem executar novas movimentações sem plano de teste aprovado.
