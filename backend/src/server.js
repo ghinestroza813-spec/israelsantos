@@ -427,6 +427,57 @@ app.get("/api/admin/products", requireSupabase, requireAdmin, async (_req, res) 
   }
 });
 
+// Stage 5B: create one inactive variant without allocating legacy stock.
+// Only the store owner may create variants. Activation and batch creation are separate steps.
+const createVariantInput = z.object({
+  sku: z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  size: z.string().trim().min(1).max(40).optional().nullable(),
+  color: z.string().trim().min(1).max(60).optional().nullable(),
+  label: z.string().trim().min(1).max(120).optional().nullable(),
+  price_override: z.number().finite().nonnegative().optional().nullable()
+}).strict().refine((value) => Boolean(value.size || value.color || value.label), {
+  message: "Provide at least a size, color or label."
+});
+
+app.post("/api/admin/products/:id/variants", requireSupabase, requireAdmin, requireOwner, async (req, res) => {
+  const productId = z.string().uuid().safeParse(req.params.id);
+  const parsed = createVariantInput.safeParse(req.body);
+  if (!productId.success || !parsed.success) {
+    return res.status(400).json({
+      error: "Invalid variant data.",
+      details: parsed.success ? undefined : parsed.error.flatten()
+    });
+  }
+  try {
+    const { data: product, error: productError } = await supabase.from("products")
+      .select("id").eq("id", productId.data).maybeSingle();
+    if (productError) throw productError;
+    if (!product) return res.status(404).json({ error: "Product not found." });
+
+    const { data: variant, error } = await supabase.from("product_variants").insert({
+      product_id: productId.data,
+      sku: parsed.data.sku,
+      size: parsed.data.size || null,
+      color: parsed.data.color || null,
+      label: parsed.data.label || null,
+      price_override: parsed.data.price_override ?? null,
+      stock: 0,
+      reserved_quantity: 0,
+      is_active: false
+    }).select("id,product_id,sku,size,color,label,price_override,stock,reserved_quantity,is_active").single();
+    if (error) {
+      if (error.code === "23505") {
+        return res.status(409).json({ error: "Variant SKU already exists or variant conflicts with a unique constraint." });
+      }
+      throw error;
+    }
+    return res.status(201).json({ variant });
+  } catch (error) {
+    console.error("Variant creation failed:", error.message);
+    return res.status(503).json({ error: "Could not create product variant." });
+  }
+});
+
 // Stage 5A: inventory is tracked by variant; legacy products.stock is not rewritten.
 const inventoryMovementInput = z.object({
   movement_type: z.enum(["purchase", "sale", "adjustment", "return", "loss"]),
