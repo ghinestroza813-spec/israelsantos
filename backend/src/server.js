@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { createClient } = require("@supabase/supabase-js");
 const { z } = require("zod");
+const path = require("node:path");
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -13,9 +14,16 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseConfigured = Boolean(supabaseUrl && supabaseSecretKey);
 const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseSecretKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+  : null;
+// Verify end-user JWTs with the public Auth client; reserve the secret key for server-side database operations.
+const supabaseAuth = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     })
   : null;
@@ -23,7 +31,19 @@ const supabase = supabaseConfigured
 app.disable("x-powered-by");
 // Render runs the app behind one trusted reverse proxy.
 app.set("trust proxy", 1);
-app.use(helmet());
+// Browser authentication connects directly to this configured Supabase origin.
+// All other Helmet CSP defaults remain enabled.
+const authOrigin = (() => {
+  try { return supabaseUrl ? new URL(supabaseUrl).origin : null; }
+  catch { return null; }
+})();
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      "connect-src": ["'self'", ...(authOrigin ? [authOrigin] : [])]
+    }
+  }
+}));
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin) ||
@@ -36,6 +56,12 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json({ limit: "8mb" }));
+// Standalone secure stock console; the legacy storefront admin remains unchanged.
+app.use("/stock-admin", express.static(path.join(__dirname, "../public/stock-admin"), { index: "index.html" }));
+app.get("/api/admin-auth-config", (_req, res) => {
+  if (!process.env.SUPABASE_ANON_KEY || !supabaseUrl) return res.status(503).json({ error: "Public Supabase Auth configuration missing." });
+  res.json({ supabaseUrl, anonKey: process.env.SUPABASE_ANON_KEY });
+});
 app.use("/api", rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 100,
@@ -58,8 +84,14 @@ async function requireAdmin(req, res, next) {
       : null;
     if (!token) return res.status(401).json({ error: "Authentication required." });
 
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !authData.user) {
+    if (!supabaseAuth) return res.status(503).json({ error: "Authentication configuration missing." });
+    const { data: authData, error: authError } = await supabaseAuth.auth.getUser(token);
+    if (authError || !authData?.user) {
+      // Log only the diagnostic code/status, never the JWT or other session credentials.
+      console.error("Admin token verification failed:", {
+        code: authError?.code || "no_user",
+        status: authError?.status || null
+      });
       return res.status(401).json({ error: "Invalid or expired session." });
     }
 
@@ -448,6 +480,12 @@ app.post("/api/admin/variants/:id/movements", requireSupabase, requireAdmin, req
   const parsed = inventoryMovementInput.safeParse(req.body);
   if (!variantId.success || !parsed.success) {
     return res.status(400).json({ error: "Invalid inventory movement.", details: parsed.success ? undefined : parsed.error.flatten() });
+  }
+  const delta = parsed.data.quantity_delta;
+  const type = parsed.data.movement_type;
+  if ((["sale", "loss"].includes(type) && delta >= 0) ||
+      (["purchase", "return"].includes(type) && delta <= 0)) {
+    return res.status(400).json({ error: "Movement quantity sign does not match movement type." });
   }
   try {
     const { data, error } = await supabase.rpc("apply_inventory_movement", {
