@@ -703,6 +703,10 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(port, () => {
-  console.log(`Israel Santos Thaishop API listening on port ${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Israel Santos Thaishop API listening on port ${port}`);
+  });
+}
+
+module.exports = app;

@@ -1,0 +1,2 @@
+﻿const test = require('node:test'); const assert = require('node:assert/strict'); const request = require('supertest'); const app = require('../src/server'); test('Cadastro em lote retorna 503 sem Supabase', async () => { const response = await request(app).post('/api/admin/products/2811de31-f8a0-4919-94c4-2efd67be69a1/variants/batch').send({}); assert.equal(response.status, 503); assert.equal(response.body.error, 'Database integration is not configured.'); });
+
