@@ -546,7 +546,7 @@ app.post("/api/admin/products/:id/variants/batch", requireSupabase, requireAdmin
       .insert(rows)
       .select("id,product_id,sku,size,color,label,price_override,stock,reserved_quantity,is_active");
     if (error) {
-      if (error.code === "23505") return res.status(409).json({ error: "One or more SKUs already exist; no batch was created." });
+      if (error.code === "23505") return res.status(409).json({ error: "Duplicate SKU or size/color combination; no batch was created." });
       throw error;
     }
     return res.status(201).json({ count: variants.length, variants });

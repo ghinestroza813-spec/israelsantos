@@ -8,6 +8,19 @@
 <div id="console" hidden>
 <section><h2>Produtos</h2><p class="muted">Estoque original e estoque por tamanho são exibidos separadamente. Nenhuma quantidade será transferida automaticamente.</p><label for="products">Selecione um produto</label><select id="products"><option value="">Selecione...</option></select><p id="legacy" class="muted"></p></section>
 <section><h2>Variações</h2><div class="scroll"><table><thead><tr><th>Tamanho / cor</th><th>SKU</th><th>Disponível</th><th>Reservado</th></tr></thead><tbody id="variants"></tbody></table></div></section>
+<section id="batchSection" hidden>
+<h2>Cadastrar variacoes em lote - Etapa 5B</h2>
+<p class="muted">As variacoes serao criadas inativas e com estoque zero.</p>
+<form id="batchVariants">
+<label for="skuPrefix">Prefixo do SKU</label>
+<input id="skuPrefix" type="text" maxlength="40" required>
+<label for="batchSizes">Tamanhos separados por virgula</label>
+<input id="batchSizes" type="text" placeholder="P, M, G" required>
+<label for="batchColors">Cores separadas por virgula</label>
+<input id="batchColors" type="text" placeholder="Preto, Branco" required>
+<p><button id="submitBatch" type="submit" disabled>Cadastrar variacoes</button></p>
+</form>
+</section>
 <section id="movementSection" hidden><h2>Registrar movimentação</h2><p class="muted">Apenas o proprietário pode movimentar estoque. Todas as operações são auditadas.</p><form id="movement"><label for="variant">Variação</label><select id="variant" required></select><label for="type">Tipo</label><select id="type"><option value="purchase">Entrada / compra</option><option value="sale">Saída / venda</option><option value="return">Devolução (entrada)</option><option value="loss">Perda (saída)</option><option value="adjustment">Ajuste (+ ou -)</option></select><label for="quantity">Quantidade (positiva para entrada, negativa para saída)</label><input id="quantity" type="number" step="1" required><label for="reason">Motivo</label><input id="reason" maxlength="500" required><label for="reference">Referência (opcional)</label><input id="reference" maxlength="120"><p><button id="submitMovement" type="submit">Registrar movimentação</button></p></form></section>
 <section><h2>Histórico recente</h2><div class="scroll"><table><thead><tr><th>Data</th><th>Tipo</th><th>Alteração</th><th>Antes → depois</th><th>Motivo</th></tr></thead><tbody id="history"></tbody></table></div></section>
 </div>
