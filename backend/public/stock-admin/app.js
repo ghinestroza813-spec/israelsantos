@@ -1,8 +1,9 @@
 "use strict";
 const $=id=>document.getElementById(id);
 let cfg=null,token=null,admin=null,variants=[];
-function parseBatchOptions(value,maxLength=40){
-  const items=String(value).split(",").map(x=>x.trim()).filter(Boolean);
+function parseBatchOptions(value,maxLength=40,normalizarPontuacao=false){
+  const texto=normalizarPontuacao?String(value).replace(/\b(PP|P|M|G|GG|XG|XGG)\s*\.\s+(?=PP\b|P\b|M\b|G\b|GG\b|XG\b|XGG\b)/gi,"$1, ").replace(/;\s*/g,", "):String(value);
+  const items=texto.split(",").map(x=>x.trim()).filter(Boolean);
   if(!items.length)throw Error("Informe pelo menos uma opcao.");
   if(items.some(x=>x.length>maxLength))throw Error(`Cada opcao deve ter no maximo ${maxLength} caracteres.`);
   const unique=new Set(items.map(x=>x.toLocaleLowerCase("pt-BR")));
@@ -38,7 +39,7 @@ function prepareBatchPayload(){
   }
 
   const sku_prefix=validateSkuPrefix($("skuPrefix").value);
-  const sizes=parseBatchOptions($("batchSizes").value,40);
+  const sizes=parseBatchOptions($("batchSizes").value,40,true);
   const colors=parseBatchOptions($("batchColors").value,60);
 
   validateBatchLimit(sizes,colors);
